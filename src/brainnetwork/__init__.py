@@ -62,6 +62,8 @@ from .decoding import (
     classify_by_timepoints,
 )
 
+from .visualization import *
+
 # Define public API
 __all__ = [
     # Version

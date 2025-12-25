@@ -39,7 +39,7 @@ def _balance_trials(segments, labels, classes, random_state=0):
 
 # %% ========= core functions =========
 # =========== 计算相关矩阵 ============
-def compute_correlation_matrix(segments, labels=None, class_filter=None, time_range=None, zscore=True, balance=False, random_state=0):
+def compute_correlation_matrix(segments, labels=None, class_filter=None, time_range=None, zscore=True, balance=True, random_state=0):
     """Return neuron x neuron correlation matrix with optional trial/time selection."""
     segments = np.asarray(segments)
 
@@ -231,7 +231,7 @@ def compute_network_metrics_by_class(segments, labels, neuron_pos=None, n_bootst
             top_k=0.05,
             weighted=False,
             absolute=False,
-            balance=False,
+            balance=True,
             random_state=0,
         )
         # ?????/????
