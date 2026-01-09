@@ -141,7 +141,7 @@ def rr_selection(trials, labels, t_stimulus=t_stimulus, l=l_stimulus, alpha_fdr=
     print("使用快速RR筛选算法...")
     
     # 过滤有效数据
-    valid_mask = (labels == 1) | (labels == 2) | (labels == 0)
+    valid_mask = (labels == 1) | (labels == 2) | (labels == 3)
     valid_trials = trials[valid_mask]
     valid_labels = labels[valid_mask]
     
@@ -289,12 +289,14 @@ def segment_neuron_data(neuron_data, trigger_data, label, pre_frames=t_stimulus,
     labels = np.array(labels)
     return segments, labels
 
-def preprocess_spike_data(neuron_data, neuron_pos, start_edge, stimulus_data):
+def preprocess_spike_data(neuron_data, neuron_pos, start_edge, stimulus_data, extract_rr = True):
 
     labels = stimulus_data[:, 0] 
     segments, labels = segment_neuron_data(neuron_data, start_edge, labels)
     
     # ============= 第四步 筛选rr神经元
+    if not extract_rr:
+        return segments, labels, neuron_pos
     rr_neurons = rr_selection(segments, np.array(labels))
     segments = segments[:, rr_neurons, :]
     neuron_pos = neuron_pos[:, rr_neurons]
