@@ -222,6 +222,7 @@ def plot_accuracy(
     baseline_color="#7A7A7A", # 中性灰
     band_alpha=0.18,
     stim_bar_color="#9E9E9E",
+    save_path=None
 ):
     """
     Beautified accuracy plot (scatter-free, paper style)
@@ -337,6 +338,8 @@ def plot_accuracy(
 
     ax.margins(x=0.02)
     fig.tight_layout()
+    if save_path is not None:
+        fig.savefig(save_path, dpi=300)
     plt.show()
 def plot_fisher_information(
     time_points,
