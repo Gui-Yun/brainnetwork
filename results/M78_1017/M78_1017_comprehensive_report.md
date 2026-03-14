@@ -2,7 +2,7 @@
 
 ## 1. 基础元数据
 - **原始数据源**: `/beegfs_hdd/data/nfs_share/users/guiyun/nishome/Micedata/M78_1017`
-- **分析生成时间**: `2026-03-06 16:07:17`
+- **分析生成时间**: `2026-03-10 14:25:00`
 - **数据导出目录**: `[../results/M78_1017/data/](./data/)` (包含CSV与JSON)
 - **图表导出目录**: `[../results/M78_1017/figures/](./figures/)`
 
@@ -69,3 +69,5 @@
 
 ![Correlation Violin](../../results/M78_1017/figures/correlation_violin.png)
 ![Network Metrics Bars](../../results/M78_1017/figures/network_metrics_bars.png)
+
+

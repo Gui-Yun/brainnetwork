@@ -15,6 +15,7 @@ from .loaddata import (
     load_data,
     preprocess_data,
     preprocess_spike_data,
+    rr_selection_class,
 
     # Data processing functions
     process_trigger,

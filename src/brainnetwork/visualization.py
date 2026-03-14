@@ -4,13 +4,15 @@ import numpy as np
 import scipy.stats as stats
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 
 def rr_distribution_plot_pretty(neuron_pos, neuron_pos_rr, data_path,
                                 x_total_mm=7.0,
                                 scalebar_mm=1.0,
                                 gamma=1.25,
                                 bg_p_low=2,
-                                bg_p_high=98):
+                                bg_p_high=98,
+                                fig_out_dir=None):
     """
     优化版 RR neuron distribution plot
     - All neurons: 用密度图(hist2d)避免点重叠
@@ -99,6 +101,8 @@ def rr_distribution_plot_pretty(neuron_pos, neuron_pos_rr, data_path,
     # ax.set_title("RR Neuron Distribution", fontsize=16, pad=10)
 
     plt.tight_layout()
+    save_path = os.path.join(fig_out_dir, "rr_distribution.png")
+    fig.savefig(save_path, dpi=300)
     plt.show()
 
 
@@ -107,7 +111,8 @@ def plot_rr_population_average_pretty(
     t_stimulus=10, l_stimulus=20, 
     figsize=(6.4, 4.2),   # 整体缩小
     line_width=3.6,       # 曲线加粗
-    sem_alpha=0.18        # 阴影更柔
+    sem_alpha=0.18,       # 阴影更柔
+    fig_out_dir=None      # 图片保存目录
 ):
     """Plot average responses of all RR neurons to three stimulus types (beautified)"""
 
@@ -205,6 +210,9 @@ def plot_rr_population_average_pretty(
 
     ax.margins(x=0.02)
     fig.tight_layout()
+    if fig_out_dir is not None:
+        save_path = os.path.join(fig_out_dir, "rr_population_average.png")
+        fig.savefig(save_path, dpi=300)
     plt.show()
 
 # ============== 编码相关 ==============
@@ -744,6 +752,305 @@ def plot_network_metrics_bars(
         axes[idx].set_visible(False)
     
     fig.tight_layout()
+    plt.show()
+
+
+
+def plot_rr_population_average(segments, labels, t_stimulus = 10, l_stimulus = 20, l_last=20, fig_out_dir="./figures"):
+    """Plot average responses of all RR neurons to three stimulus types"""
+    # Class name mapping
+    CLASS_NAMES = {
+        3: "Random",
+        1: "Convergent",
+        2: "Divergent"
+    }
+
+    # Unified color scheme
+    CLASS_COLORS = {
+        1: "#3D5A80",      # Random - deep blue
+        2: "#E07A5F",      # Convergent - coral orange
+        3: "#81B29A"       # Divergent - sage green
+    }
+
+    time_axis = np.arange(segments.shape[2])
+    stim_start = t_stimulus
+    stim_duration = l_stimulus
+    stim_end = stim_start + stim_duration + l_last
+
+    # Create figure
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    # Add elegant stimulus window shading
+    ax.axvspan(stim_start, stim_end, color='#FFD166', alpha=0.15, zorder=0, label='Stimulus')
+    ax.axhline(y=0, color='#888888', linestyle='-', linewidth=0.5, alpha=0.4, zorder=0)
+
+    # Plot each stimulus type
+    for cls in [1, 2, 3]:  # Only plot the three main classes
+        cls_mask = labels == cls
+        if not np.any(cls_mask):
+            continue
+
+        # Get all trials for this class, average across neurons AND trials
+        cls_segments = segments[cls_mask]  # (n_trials, n_neurons, n_timepoints)
+
+        # Average across both trials and neurons to get population mean
+        population_mean = np.mean(cls_segments, axis=(0, 1))  # (n_timepoints,)
+
+        # Calculate SEM across trials (keeping neurons separate first)
+        trial_means = np.mean(cls_segments, axis=1)  # (n_trials, n_timepoints)
+        population_sem = stats.sem(trial_means, axis=0, nan_policy='omit')
+
+        color = CLASS_COLORS[cls]
+        class_name = CLASS_NAMES[cls]
+
+        # Plot with error band
+        ax.fill_between(time_axis,
+                       population_mean - population_sem,
+                       population_mean + population_sem,
+                       color=color, alpha=0.2, zorder=1)
+        ax.plot(time_axis, population_mean, color=color, linewidth=2.5,
+               label=class_name, zorder=2)
+
+    # Styling
+    ax.set_xlabel('Time (frames)', fontsize=13, fontweight='medium')
+    ax.set_ylabel('Mean dF/F', fontsize=13, fontweight='medium')
+    ax.set_title('Population Average Response of RR Neurons',
+                fontsize=15, fontweight='bold', pad=15)
+    ax.tick_params(axis='both', which='major', labelsize=11)
+    ax.legend(frameon=True, fontsize=11, loc='upper right',
+             framealpha=0.95, edgecolor='#cccccc')
+
+    fig.tight_layout()
+    save_path = os.path.join(fig_out_dir, "rr_population_average.png")
+    fig.savefig(save_path, dpi=300)
+    plt.show()
+
+def plot_correlation_violin_optim(nx_result, fig_out_dir="./figures"):
+    """
+    Plot violin plots of correlation coefficient distributions for each stimulus class.
+    nx_result: dict
+        Output from compute_network_metrics_by_class containing 'corr_matrix' for each class.
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    # 类名定义
+    CLASS_NAMES = {1: "Convergent", 2: "Divergent", 3: "Random"}
+    CLASS_COLORS = {
+        1: "#3C5488",  # Convergent: 深蓝 (沉稳，表示汇聚)
+        2: "#E64B35",  # Divergent:  朱红 (醒目，表示发散)
+        3: "#00A087",  # Random:     蓝绿 (中性，表示随机)
+    }
+    # 提取每个类别的相关系数（排除对角线）
+    corr_data = []
+    class_labels = []
+    class_order = [1, 2, 3]
+
+    for cls in class_order:
+        if cls in nx_result:
+            corr_matrix = nx_result[cls]['corr_matrix']
+            # 获取上三角的相关系数（排除对角线）
+            mask = np.triu(np.ones_like(corr_matrix, dtype=bool), k=1)
+            corr_values = corr_matrix[mask]
+            corr_data.append(corr_values)
+            class_labels.append(CLASS_NAMES[cls])
+
+    # 绘制小提琴图
+    fig, ax = plt.subplots(figsize=(4, 3), dpi=200)
+
+    # 创建小提琴图
+    parts = ax.violinplot(
+        corr_data,
+        positions=range(len(class_order)),
+        widths=0.7,
+        showmeans=True,
+        showmedians=True,
+    )
+
+    # 为每个小提琴设置颜色
+    for i, pc in enumerate(parts['bodies']):
+        cls = class_order[i]
+        pc.set_facecolor(CLASS_COLORS[cls])
+        pc.set_alpha(0.7)
+        pc.set_edgecolor(CLASS_COLORS[cls])
+        pc.set_linewidth(1.2)
+
+    # 设置其他线条的样式
+    for partname in ('cbars', 'cmins', 'cmaxes', 'cmedians', 'cmeans'):
+        if partname in parts:
+            vp = parts[partname]
+            vp.set_edgecolor('#333333')
+            vp.set_linewidth(1.2)
+
+    # 坐标轴美化
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_linewidth(1.2)
+    ax.spines["bottom"].set_linewidth(1.2)
+
+    # 设置 x 轴标签
+    ax.set_xticks(range(len(class_order)))
+    ax.set_xticklabels(class_labels, fontsize=11)
+
+    # 标签和标题
+    ax.set_ylabel('Correlation Coefficient', fontsize=12)
+    # ax.set_xlabel('Stimulus Type', fontsize=12)
+    # ax.set_title('Distribution of Pairwise Correlations', fontsize=13.5, weight='bold', pad=10)
+
+    # 添加水平参考线
+    ax.axhline(y=0, color='#888888', linestyle='--', linewidth=0.8, alpha=0.5, zorder=0)
+
+    fig.tight_layout()
+    save_path = os.path.join(fig_out_dir, "correlation_violin.png")
+    fig.savefig(save_path, dpi=300)
+    plt.show()
+
+def plot_network_metrics_bars_optim(
+    nx_result,
+    metrics=None,
+    figsize=(8, 4),
+    bar_width=0.6,
+    show_values=True,
+    value_fontsize=9,
+    fig_out_dir="./figures"
+):
+    """
+    绘制网络指标的柱状图
+    
+    Parameters
+    ----------
+    nx_result : dict
+        compute_network_metrics_by_class 的返回结果
+    metrics : list of str, optional
+        要绘制的指标列表。如果为 None，则绘制所有可用指标。
+        可选指标：
+        - 'density': 网络密度
+        - 'mean_degree': 平均度
+        - 'largest_component': 最大连通分量大小
+        - 'avg_clustering': 平均聚类系数
+        - 'global_efficiency': 全局效率
+        - 'local_efficiency': 局部效率
+        - 'transitivity': 传递性
+        - 'efficiency': 效率（额外计算）
+        - 'modularity': 模块度
+        - 'betweenness_mean': 介数中心性均值
+    figsize : tuple
+        图形大小
+    bar_width : float
+        柱子宽度
+    show_values : bool
+        是否在柱子上显示数值
+    value_fontsize : int
+        数值字体大小
+    """
+    
+    # 类名定义
+    CLASS_NAMES = {1: "Convergent", 2: "Divergent", 3: "Random"}
+    CLASS_COLORS = {
+        1: "#3C5488",  # Convergent: 深蓝 (沉稳，表示汇聚)
+        2: "#E64B35",  # Divergent:  朱红 (醒目，表示发散)
+        3: "#00A087",  # Random:     蓝绿 (中性，表示随机)
+    }
+    
+    # 默认绘制所有指标
+    if metrics is None:
+        metrics = [
+            'density', 'mean_degree', 'largest_component',
+            'avg_clustering', 'global_efficiency', 'local_efficiency',
+            'transitivity', 'efficiency', 'modularity', 'betweenness_mean'
+        ]
+    
+    # 指标的显示名称
+    metric_labels = {
+        'density': 'Network Density',
+        'mean_degree': 'Mean Degree',
+        'largest_component': 'Largest Component',
+        'avg_clustering': 'Avg Clustering',
+        'global_efficiency': 'Global Efficiency',
+        'local_efficiency': 'Local Efficiency',
+        'transitivity': 'Transitivity',
+        'efficiency': 'Efficiency',
+        'modularity': 'Modularity',
+        'betweenness_mean': 'Betweenness (mean)',
+    }
+    
+    class_order = [1, 2, 3]
+    n_metrics = len(metrics)
+    n_cols = 3
+    n_rows = (n_metrics + n_cols - 1) // n_cols
+    
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize, dpi=200)
+    axes = axes.flatten() if n_metrics > 1 else [axes]
+    
+    for idx, metric in enumerate(metrics):
+        ax = axes[idx]
+        
+        # 提取数据
+        values = []
+        colors = []
+        labels = []
+        
+        for cls in class_order:
+            if cls not in nx_result:
+                continue
+                
+            # 从不同的字段中获取指标值
+            if metric in ['density', 'mean_degree', 'largest_component', 
+                         'avg_clustering', 'global_efficiency', 'local_efficiency', 
+                         'transitivity']:
+                value = nx_result[cls]['summary'][metric]
+            elif metric == 'efficiency':
+                value = nx_result[cls]['efficiency']
+            elif metric == 'modularity':
+                value = nx_result[cls]['modularity']
+            elif metric == 'betweenness_mean':
+                value = nx_result[cls]['betweenness_stats']['mean']
+            else:
+                continue
+            
+            values.append(value)
+            colors.append(CLASS_COLORS[cls])
+            labels.append(CLASS_NAMES[cls])
+        
+        # 绘制柱状图
+        x_pos = np.arange(len(values))
+        bars = ax.bar(x_pos, values, width=bar_width, color=colors, 
+                     alpha=0.8, edgecolor='#333333', linewidth=1.2)
+        
+        # 在柱子上显示数值
+        if show_values:
+            for i, (bar, val) in enumerate(zip(bars, values)):
+                height = bar.get_height()
+                ax.text(bar.get_x() + bar.get_width() / 2., height,
+                       f'{val:.3f}',
+                       ha='center', va='bottom',
+                       fontsize=value_fontsize, color='#333333')
+        
+        # 坐标轴美化
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["left"].set_linewidth(1.2)
+        ax.spines["bottom"].set_linewidth(1.2)
+        
+        # 设置 x 轴标签
+        ax.set_xticks(x_pos)
+        ax.set_xticklabels(labels, fontsize=10)
+        
+        # 标题
+        ax.set_title(metric_labels.get(metric, metric), 
+                    fontsize=11, weight='bold', pad=8)
+        ax.set_ylabel('Value', fontsize=10)
+        
+        # y 轴从 0 开始
+        ax.set_ylim(bottom=0)
+    
+    # 隐藏多余的子图
+    for idx in range(n_metrics, len(axes)):
+        axes[idx].set_visible(False)
+    
+    fig.tight_layout()
+    save_path = os.path.join(fig_out_dir, "network_metrics_bars.png")
+    fig.savefig(save_path, dpi=300)
     plt.show()
 
 

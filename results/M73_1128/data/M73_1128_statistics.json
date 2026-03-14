@@ -1,0 +1,61 @@
+{
+    "mouse_id": "M73_1128",
+    "timestamp": "2026-03-13 19:43:06",
+    "entropy_metrics": [
+        {
+            "Stimulus": "Divergent",
+            "Entropy": 3.4956596258064585,
+            "Mean_Sim": 0.5497167864567918,
+            "Std_Sim": 0.11011824593913465
+        },
+        {
+            "Stimulus": "Convergent",
+            "Entropy": 3.321737851671569,
+            "Mean_Sim": 0.5881589701437543,
+            "Std_Sim": 0.09924193488762403
+        },
+        {
+            "Stimulus": "Random",
+            "Entropy": 3.485461299202891,
+            "Mean_Sim": 0.6646790138128603,
+            "Std_Sim": 0.11518159147234772
+        }
+    ],
+    "network_correlation": [
+        {
+            "Class_ID": 1,
+            "Class_Name": "Divergent",
+            "Mean_Correlation": 0.17153139213500068,
+            "Mean_Abs_Correlation": 0.17153139213500068,
+            "Weak_Abs_Correlation_Mean": 0.044102640309629244,
+            "Strong_Abs_Correlation_Mean": 0.3429309062491119,
+            "Strong_Weak_Gap": 0.29882826593948264,
+            "Pair_Count": 131328
+        },
+        {
+            "Class_ID": 2,
+            "Class_Name": "Convergent",
+            "Mean_Correlation": 0.18731436353374686,
+            "Mean_Abs_Correlation": 0.18731436353374686,
+            "Weak_Abs_Correlation_Mean": 0.05351470390487237,
+            "Strong_Abs_Correlation_Mean": 0.36051678666321335,
+            "Strong_Weak_Gap": 0.30700208275834096,
+            "Pair_Count": 131328
+        },
+        {
+            "Class_ID": 3,
+            "Class_Name": "Random",
+            "Mean_Correlation": 0.1507558531607294,
+            "Mean_Abs_Correlation": 0.1507558531607294,
+            "Weak_Abs_Correlation_Mean": 0.012941292948877069,
+            "Strong_Abs_Correlation_Mean": 0.35214355961689076,
+            "Strong_Weak_Gap": 0.3392022666680137,
+            "Pair_Count": 131328
+        }
+    ],
+    "rr_participants_ratio": {
+        "1": 2.348027083162525,
+        "2": 2.0019354919480503,
+        "3": 3.885557451647282
+    }
+}

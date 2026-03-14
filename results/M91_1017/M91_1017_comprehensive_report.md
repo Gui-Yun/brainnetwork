@@ -2,7 +2,7 @@
 
 ## 1. 基础元数据
 - **原始数据源**: `/beegfs_hdd/data/nfs_share/users/guiyun/nishome/Micedata/M91_1017`
-- **分析生成时间**: `2026-03-06 16:10:42`
+- **分析生成时间**: `2026-03-09 14:51:17`
 - **数据导出目录**: `[../results/M91_1017/data/](./data/)` (包含CSV与JSON)
 - **图表导出目录**: `[../results/M91_1017/figures/](./figures/)`
 

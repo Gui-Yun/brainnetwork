@@ -1,0 +1,61 @@
+{
+    "mouse_id": "M71_1024",
+    "timestamp": "2026-03-13 19:39:10",
+    "entropy_metrics": [
+        {
+            "Stimulus": "Divergent",
+            "Entropy": 3.86000390170122,
+            "Mean_Sim": 0.5657182910606519,
+            "Std_Sim": 0.14422779984409823
+        },
+        {
+            "Stimulus": "Convergent",
+            "Entropy": 4.020472930640237,
+            "Mean_Sim": 0.5371941747073368,
+            "Std_Sim": 0.1674970038674878
+        },
+        {
+            "Stimulus": "Random",
+            "Entropy": 3.7369135475700754,
+            "Mean_Sim": 0.6121628450269122,
+            "Std_Sim": 0.1328706981012345
+        }
+    ],
+    "network_correlation": [
+        {
+            "Class_ID": 1,
+            "Class_Name": "Divergent",
+            "Mean_Correlation": 0.17783450339038742,
+            "Mean_Abs_Correlation": 0.17783450339038742,
+            "Weak_Abs_Correlation_Mean": 0.04548591221268483,
+            "Strong_Abs_Correlation_Mean": 0.37783917296650604,
+            "Strong_Weak_Gap": 0.3323532607538212,
+            "Pair_Count": 25425
+        },
+        {
+            "Class_ID": 2,
+            "Class_Name": "Convergent",
+            "Mean_Correlation": 0.17778559541083366,
+            "Mean_Abs_Correlation": 0.17778559541083366,
+            "Weak_Abs_Correlation_Mean": 0.044524746112453516,
+            "Strong_Abs_Correlation_Mean": 0.38064000564595263,
+            "Strong_Weak_Gap": 0.33611525953349913,
+            "Pair_Count": 25425
+        },
+        {
+            "Class_ID": 3,
+            "Class_Name": "Random",
+            "Mean_Correlation": 0.15661570553301934,
+            "Mean_Abs_Correlation": 0.15661570553301934,
+            "Weak_Abs_Correlation_Mean": 0.03259033738834164,
+            "Strong_Abs_Correlation_Mean": 0.3543040314803662,
+            "Strong_Weak_Gap": 0.32171369409202455,
+            "Pair_Count": 25425
+        }
+    ],
+    "rr_participants_ratio": {
+        "1": 1.5856371534953857,
+        "2": 1.3690233945230734,
+        "3": 3.1884204989367455
+    }
+}

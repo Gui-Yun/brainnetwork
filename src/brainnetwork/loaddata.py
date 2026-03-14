@@ -19,6 +19,102 @@ reliability_threshold = 0.75
 snr_threshold = 0.8
 
 
+def rr_selection_class(trials, labels, t_stimulus=t_stimulus, l_stimulus=l_stimulus, 
+                 alpha_fdr=0.05, alpha_level=0.05, 
+                 reliability_threshold=reliability_threshold, snr_threshold=snr_threshold, 
+                 effect_size_threshold=0.5, response_ratio_threshold=0.8, 
+                 max_n=2000):
+    """
+    快速RR神经元筛选 (按类分别计算后取并集)
+    
+    逻辑变更:
+    1. 遍历 Label 1, 2, 3。
+    2. 在每个 Label 内部计算响应性(Effect Size)和可靠性(SNR)。
+    3. 筛选出该 Label 下的 RR 神经元。
+    4. 将所有 Label 筛选出的神经元取并集 (Union)。
+    """
+    print("使用快速RR筛选算法 (按类分别筛选取并集)...")
+
+    n_trials_total, n_neurons, n_timepoints = trials.shape
+    
+    # 定义时间窗口
+    baseline_pre = np.arange(0, t_stimulus)
+    baseline_post = np.arange(t_stimulus + l_stimulus, n_timepoints)
+    stimulus_window = np.arange(t_stimulus, t_stimulus + l_stimulus)
+    
+    # 用于存储最终选中的神经元索引（使用集合自动去重，实现并集逻辑）
+    rr_neurons = {}
+    
+    # 指定需要分析的类别
+    target_classes = [1, 2, 3]
+    
+    for target_class in target_classes:
+        # 1. 提取当前类别的试次
+        class_mask = (labels == target_class)
+        class_trials = trials[class_mask]
+        
+        n_class_trials = class_trials.shape[0]
+        
+        if n_class_trials == 0:
+            print(f"警告: 类别 {target_class} 没有对应的试次，跳过。")
+            continue
+            
+        # print(f"正在处理类别 {target_class}: {n_class_trials} 个试次")
+        
+        # 2. 响应性检测 - 向量化计算 (针对当前类别)
+        
+        # 计算基线 (Pre + Post)
+        # mean (trials, neurons)
+        cls_baseline_pre_mean = np.mean(class_trials[:, :, baseline_pre], axis=2)
+        cls_baseline_post_mean = np.mean(class_trials[:, :, baseline_post], axis=2)
+        cls_baseline_mean = (cls_baseline_pre_mean + cls_baseline_post_mean) / 2
+        
+        # std (trials, neurons)
+        cls_baseline_pre_std = np.std(class_trials[:, :, baseline_pre], axis=2)
+        cls_baseline_post_std = np.std(class_trials[:, :, baseline_post], axis=2)
+        cls_baseline_std = (cls_baseline_pre_std + cls_baseline_post_std) / 2
+        
+        # 计算刺激期
+        cls_stimulus_mean = np.mean(class_trials[:, :, stimulus_window], axis=2)
+        cls_stimulus_std = np.std(class_trials[:, :, stimulus_window], axis=2)
+        
+        # 计算 Cohen's d 效应大小
+        # pooled_std
+        cls_pooled_std = np.sqrt((cls_baseline_std**2 + cls_stimulus_std**2) / 2)
+        cls_effect_size = np.abs(cls_stimulus_mean - cls_baseline_mean) / (cls_pooled_std + 1e-8)
+        
+        # 筛选1：响应性 (Enhanced)
+        # 标准：平均效应大小 > 阈值 且 刺激均值 > 基线均值 (兴奋性)
+        cls_response_ratio = np.mean(cls_effect_size > effect_size_threshold, axis=0)
+        
+        # 注意：这里保持你的逻辑，既要 response_ratio 达标，又要总体均值是增强的(兴奋性)
+        is_enhanced_mean = np.mean(cls_stimulus_mean > cls_baseline_mean, axis=0) > response_ratio_threshold
+        is_responsive = (cls_response_ratio > response_ratio_threshold) & is_enhanced_mean
+        
+        class_enhanced_indices = np.where(is_responsive)[0]
+
+        # 3. 可靠性检测 (Reliability)
+        
+        # 信噪比 SNR
+        cls_signal_strength = np.abs(cls_stimulus_mean - cls_baseline_mean)
+        cls_noise_level = cls_baseline_std + 1e-8
+        cls_snr = cls_signal_strength / cls_noise_level
+        
+        # 筛选2：可靠性
+        cls_reliability_ratio = np.mean(cls_snr > snr_threshold, axis=0)
+        class_reliable_indices = np.where(cls_reliability_ratio >= reliability_threshold)[0]
+        
+        # 4. 取当前类别的交集 (既响应又可靠)
+        # intersect1d 用于取两个数组的交集
+        class_rr_indices = np.intersect1d(class_enhanced_indices, class_reliable_indices)
+        
+        # 5. 加入到总集合中 (Union 操作)
+        rr_neurons[target_class] = set(class_rr_indices)
+        
+        print(f"  - 类别 {target_class} 贡献了 {len(class_rr_indices)} 个 RR 神经元")
+    
+    return rr_neurons
+
 # ======= functions =======
 def process_trigger(txt_file, IPD=ipd, ISI=isi, fre=None, min_sti_gap=4.0):
     """
