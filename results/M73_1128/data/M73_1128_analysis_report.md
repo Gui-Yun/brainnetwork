@@ -1,6 +1,6 @@
 # Mouse Neural Activity Report - M73_1128
 
-**Generated At**: 2026-03-20 17:23:53
+**Generated At**: 2026-03-20 18:02:29
 
 ## 1. RSM and Shannon Entropy
 
@@ -8,8 +8,8 @@ Metrics for representation stability and variability across stimulus conditions.
 
 | Stimulus | Entropy | Mean_Sim | Std_Sim |
 | --- | --- | --- | --- |
-| Divergent | 3.6423 | 0.5434 | 0.1241 |
-| Convergent | 3.4834 | 0.5671 | 0.1102 |
+| Divergent | 3.6448 | 0.5377 | 0.1229 |
+| Convergent | 3.5607 | 0.5556 | 0.1209 |
 | Random | 3.4855 | 0.6647 | 0.1152 |
 
 ## 2. Pairwise Network Correlation Summary
