@@ -1,30 +1,67 @@
-# 小鼠神经活动综合分析报告 - M71_1024
+# Mouse Neural Activity Report - M71_1024
 
-**生成时间**: 2026-03-13 19:39:10
+**Generated At**: 2026-03-20 17:20:37
 
-## 1. 表征相似度 (RSM) 与香农熵
+## 1. RSM and Shannon Entropy
 
-衡量不同刺激条件下，神经群体表征稳定性和变异度。
+Metrics for representation stability and variability across stimulus conditions.
 
 | Stimulus | Entropy | Mean_Sim | Std_Sim |
 | --- | --- | --- | --- |
-| Divergent | 3.8600 | 0.5657 | 0.1442 |
-| Convergent | 4.0205 | 0.5372 | 0.1675 |
+| Divergent | 3.8989 | 0.5706 | 0.1497 |
+| Convergent | 4.0001 | 0.5348 | 0.1622 |
 | Random | 3.7369 | 0.6122 | 0.1329 |
 
-## 2. 神经元功能网络成对相关性
+## 2. Pairwise Network Correlation Summary
 
-衡量网络强弱连接的差异（Strong vs Weak Gap）。
+Difference between lowest and highest correlation tails.
 
-| Class_ID | Class_Name | Mean_Correlation | Mean_Abs_Correlation | Weak_Abs_Correlation_Mean | Strong_Abs_Correlation_Mean | Strong_Weak_Gap | Pair_Count |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Divergent | 0.1778 | 0.1778 | 0.0455 | 0.3778 | 0.3324 | 25425 |
-| 2 | Convergent | 0.1778 | 0.1778 | 0.0445 | 0.3806 | 0.3361 | 25425 |
-| 3 | Random | 0.1566 | 0.1566 | 0.0326 | 0.3543 | 0.3217 | 25425 |
+| Class_ID | Class_Name | Mean_Correlation | Weak_Correlation_Mean | Strong_Correlation_Mean | Strong_Weak_Gap | Pair_Count |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | Divergent | 0.1778 | 0.0455 | 0.3778 | 0.3323 | 25425 |
+| 2 | Convergent | 0.1778 | 0.0445 | 0.3806 | 0.3361 | 25425 |
+| 3 | Random | 0.1566 | 0.0326 | 0.3543 | 0.3217 | 25425 |
 
-## 3. RR神经元响应比例 (Participants)
+## 2.1 Decile-wise Correlation Strength (Every 10%)
 
-衡量特异性可靠响应神经元（Class-RR）相对于群体内其他RR神经元的响应强度倍数。
+Connectivity values are sorted by raw correlation and split into 10 equal bins.
+
+| Class_ID | Class_Name | Decile_Index | Decile_Label | Lower_Quantile | Upper_Quantile | Pair_Count | Mean_Correlation | Min_Correlation | Max_Correlation |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | Divergent | 1 | 0-10% | 0.0000 | 0.1000 | 2543 | 0.0455 | -0.0415 | 0.0722 |
+| 1 | Divergent | 2 | 10-20% | 0.1000 | 0.2000 | 2543 | 0.0879 | 0.0722 | 0.1019 |
+| 1 | Divergent | 3 | 20-30% | 0.2000 | 0.3000 | 2543 | 0.1138 | 0.1019 | 0.1253 |
+| 1 | Divergent | 4 | 30-40% | 0.3000 | 0.4000 | 2543 | 0.1364 | 0.1253 | 0.1473 |
+| 1 | Divergent | 5 | 40-50% | 0.4000 | 0.5000 | 2543 | 0.1578 | 0.1473 | 0.1683 |
+| 1 | Divergent | 6 | 50-60% | 0.5000 | 0.6000 | 2542 | 0.1786 | 0.1683 | 0.1887 |
+| 1 | Divergent | 7 | 60-70% | 0.6000 | 0.7000 | 2542 | 0.1994 | 0.1887 | 0.2104 |
+| 1 | Divergent | 8 | 70-80% | 0.7000 | 0.8000 | 2542 | 0.2238 | 0.2104 | 0.2384 |
+| 1 | Divergent | 9 | 80-90% | 0.8000 | 0.9000 | 2542 | 0.2576 | 0.2384 | 0.2812 |
+| 1 | Divergent | 10 | 90-100% | 0.9000 | 1.0000 | 2542 | 0.3778 | 0.2812 | 0.9686 |
+| 2 | Convergent | 1 | 0-10% | 0.0000 | 0.1000 | 2543 | 0.0445 | -0.0381 | 0.0722 |
+| 2 | Convergent | 2 | 10-20% | 0.1000 | 0.2000 | 2543 | 0.0885 | 0.0722 | 0.1024 |
+| 2 | Convergent | 3 | 20-30% | 0.2000 | 0.3000 | 2543 | 0.1144 | 0.1025 | 0.1257 |
+| 2 | Convergent | 4 | 30-40% | 0.3000 | 0.4000 | 2543 | 0.1367 | 0.1258 | 0.1473 |
+| 2 | Convergent | 5 | 40-50% | 0.4000 | 0.5000 | 2543 | 0.1572 | 0.1473 | 0.1672 |
+| 2 | Convergent | 6 | 50-60% | 0.5000 | 0.6000 | 2542 | 0.1776 | 0.1672 | 0.1882 |
+| 2 | Convergent | 7 | 60-70% | 0.6000 | 0.7000 | 2542 | 0.1992 | 0.1882 | 0.2107 |
+| 2 | Convergent | 8 | 70-80% | 0.7000 | 0.8000 | 2542 | 0.2236 | 0.2108 | 0.2371 |
+| 2 | Convergent | 9 | 80-90% | 0.8000 | 0.9000 | 2542 | 0.2556 | 0.2371 | 0.2782 |
+| 2 | Convergent | 10 | 90-100% | 0.9000 | 1.0000 | 2542 | 0.3806 | 0.2782 | 0.9660 |
+| 3 | Random | 1 | 0-10% | 0.0000 | 0.1000 | 2543 | 0.0326 | -0.0412 | 0.0577 |
+| 3 | Random | 2 | 10-20% | 0.1000 | 0.2000 | 2543 | 0.0720 | 0.0577 | 0.0847 |
+| 3 | Random | 3 | 20-30% | 0.2000 | 0.3000 | 2543 | 0.0953 | 0.0847 | 0.1054 |
+| 3 | Random | 4 | 30-40% | 0.3000 | 0.4000 | 2543 | 0.1149 | 0.1054 | 0.1244 |
+| 3 | Random | 5 | 40-50% | 0.4000 | 0.5000 | 2543 | 0.1344 | 0.1244 | 0.1440 |
+| 3 | Random | 6 | 50-60% | 0.5000 | 0.6000 | 2542 | 0.1535 | 0.1441 | 0.1633 |
+| 3 | Random | 7 | 60-70% | 0.6000 | 0.7000 | 2542 | 0.1744 | 0.1633 | 0.1859 |
+| 3 | Random | 8 | 70-80% | 0.7000 | 0.8000 | 2542 | 0.1997 | 0.1859 | 0.2152 |
+| 3 | Random | 9 | 80-90% | 0.8000 | 0.9000 | 2542 | 0.2352 | 0.2152 | 0.2591 |
+| 3 | Random | 10 | 90-100% | 0.9000 | 1.0000 | 2542 | 0.3543 | 0.2591 | 0.9696 |
+
+## 3. RR Participant Ratio
+
+Response ratio of class-specific RR neurons relative to other RR neurons.
 
 | Condition | Response_Ratio |
 | --- | --- |
@@ -32,9 +69,10 @@
 | 2 | 1.3690 |
 | 3 | 3.1884 |
 
-## 4. 关键可视化图表索引
+## 4. Figure Index
 
-- **偏好性排序热图**: `![Neural Patterns](./figures/neural_patterns_preference_sorted.png)`
-- **层次聚类图谱**: `![Clustermap](./figures/neural_patterns_clustermap.png)`
-- **RSM 相似度分布**: `![Similarity Distribution](./figures/similarity_distribution.png)`
-- **相关性强度对比**: `![Pairwise Correlation](./figures/pairwise_correlation.png)`
+- Preference-sorted heatmap: `./figures/neural_patterns_preference_sorted.png`
+- Hierarchical clustermap: `./figures/neural_patterns_clustermap.png`
+- RSM similarity distribution: `./figures/similarity_distribution.png`
+- Pairwise correlation summary: `./figures/pairwise_correlation.png`
+- Decile-wise line chart: `./figures/pairwise_correlation_deciles_line.png`

@@ -1,0 +1,9 @@
+Subset,Subset_Size
+Class_1,118
+Class_2,148
+Class_3,106
+Class_1&Class_2,78
+Class_1&Class_3,62
+Class_2&Class_3,55
+All_Classes_Intersection,49
+Union_All,226
