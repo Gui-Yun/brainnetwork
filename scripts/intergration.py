@@ -15,7 +15,21 @@ GROUP_OUT_DIR = os.path.join(RESULTS_BASE_DIR, "group_summary")
 os.makedirs(GROUP_OUT_DIR, exist_ok=True)
 
 CONDITIONS = ["Divergent", "Convergent", "Random"]
-COLORS = {"Divergent": "#FF4B4B", "Convergent": "#1C75BC", "Random": "#7AC143"}
+# Condition palette (semantically meaningful + colorblind-friendly):
+# Divergent: warm/high-contrast; Convergent: cool/structured; Random: natural/neutral.
+COLORS = {"Divergent": "#D55E00", "Convergent": "#0072B2", "Random": "#009E73"}
+NETWORK_TYPE_COLORS = {
+    "strong": "#1F4E79",
+    "weak": "#94A3B8",
+    "strong_threshold": "#7A2048",
+    "weak_threshold": "#8DAA9D",
+}
+NETWORK_TYPE_LABELS = {
+    "strong": "Strong (rank)",
+    "weak": "Weak (rank)",
+    "strong_threshold": "Strong (threshold)",
+    "weak_threshold": "Weak (threshold)",
+}
 
 ID_TO_COND = {"1": "Divergent", "2": "Convergent", "3": "Random"}
 COND_ALIASES = {
@@ -28,6 +42,23 @@ COND_ALIASES = {
 }
 
 GRAPH_METRICS = ["efficiency", "modularity", "local_efficiency", "avg_clustering"]
+
+
+sns.set_theme(style="white", context="paper")
+plt.rcParams.update(
+    {
+        "figure.dpi": 300,
+        "savefig.dpi": 300,
+        "font.size": 10,
+        "axes.labelsize": 10,
+        "axes.titlesize": 11,
+        "xtick.labelsize": 9,
+        "ytick.labelsize": 9,
+        "legend.fontsize": 9,
+        "pdf.fonttype": 42,
+        "ps.fonttype": 42,
+    }
+)
 
 
 def normalize_condition(value):
@@ -94,6 +125,8 @@ def load_all_mice_bundles(base_dir):
                 "effective_dim": load_optional_csv(data_dir, "effective_dimensionality_by_class.csv"),
                 "graph_sw": load_optional_csv(data_dir, "network_metrics_strong_vs_weak.csv"),
                 "graph_thr": load_optional_csv_by_pattern(data_dir, "network_metrics_threshold_*.csv"),
+                "sig_noise_summary": load_optional_csv(data_dir, "sig_noise_strength_summary_by_condition.csv"),
+                "noise_decile_coupling": load_optional_csv(data_dir, "noise_corr_decile_coupling.csv"),
                 "rr_overlap": load_optional_csv(data_dir, "rr_overlap_summary.csv"),
                 "corr_deciles_csv": load_optional_csv(data_dir, f"{mouse_id}_correlation_deciles.csv"),
             }
@@ -201,6 +234,31 @@ def _effective_dim_by_condition(effective_dim_df, condition):
     return cols
 
 
+def _sig_noise_by_condition(sig_noise_df, condition):
+    cols = {}
+    if sig_noise_df is None or sig_noise_df.empty:
+        return cols
+
+    s = sig_noise_df.copy()
+    s["Class_Name"] = s["Class_Name"].map(normalize_condition)
+    row = s[s["Class_Name"] == condition]
+    if row.empty:
+        return cols
+    row = row.iloc[0]
+
+    field_map = {
+        "Mean_Signal_Corr": "Sig_Mean_Corr",
+        "Mean_Noise_Corr": "Noise_Mean_Corr",
+        "Mean_Abs_Signal_Corr": "SigAbs_Mean_Corr",
+        "Mean_Abs_Noise_Corr": "NoiseAbs_Mean_Corr",
+        "Signal_Noise_Coupling_r": "SigNoise_Coupling_r",
+    }
+    for src, dst in field_map.items():
+        if src in row:
+            cols[dst] = safe_float(row[src])
+    return cols
+
+
 def build_master_dataframe(bundles):
     rows = []
 
@@ -230,6 +288,7 @@ def build_master_dataframe(bundles):
 
             row.update(_trial_shape_by_condition(b["trial_shape_summary"], cond))
             row.update(_effective_dim_by_condition(b["effective_dim"], cond))
+            row.update(_sig_noise_by_condition(b["sig_noise_summary"], cond))
             row.update(_graph_condition_metrics(b["graph_sw"], cond))
             row.update(_graph_threshold_condition_metrics(b["graph_thr"], cond))
             rows.append(row)
@@ -312,6 +371,64 @@ def build_graph_threshold_long_dataframe(bundles):
     return pd.concat(rows, ignore_index=True)
 
 
+def build_sig_noise_summary_long_dataframe(bundles):
+    rows = []
+    for b in bundles:
+        s = b["sig_noise_summary"]
+        if s is None or s.empty:
+            continue
+        tmp = s.copy()
+        tmp["mouse_id"] = b["mouse_id"]
+        tmp["Condition"] = tmp["Class_Name"].map(normalize_condition)
+        tmp = tmp[tmp["Condition"].isin(CONDITIONS)]
+        keep_cols = [
+            "mouse_id",
+            "Condition",
+            "Mean_Signal_Corr",
+            "Mean_Noise_Corr",
+            "Mean_Abs_Signal_Corr",
+            "Mean_Abs_Noise_Corr",
+            "Signal_Noise_Coupling_r",
+        ]
+        have_cols = [c for c in keep_cols if c in tmp.columns]
+        rows.append(tmp[have_cols])
+
+    if not rows:
+        return pd.DataFrame(
+            columns=[
+                "mouse_id",
+                "Condition",
+                "Mean_Signal_Corr",
+                "Mean_Noise_Corr",
+                "Mean_Abs_Signal_Corr",
+                "Mean_Abs_Noise_Corr",
+                "Signal_Noise_Coupling_r",
+            ]
+        )
+    return pd.concat(rows, ignore_index=True)
+
+
+def build_noise_decile_coupling_long_dataframe(bundles):
+    rows = []
+    for b in bundles:
+        c = b["noise_decile_coupling"]
+        if c is None or c.empty:
+            continue
+        tmp = c.copy()
+        tmp["mouse_id"] = b["mouse_id"]
+        tmp["Condition"] = tmp["Class_Name"].map(normalize_condition)
+        tmp = tmp[tmp["Condition"].isin(CONDITIONS)]
+        expected = ["mouse_id", "Condition", "Decile_Index", "Mean_Correlation", "Noise_Mean_Corr", "Corr_Delta_vs_D1", "Noise_Delta_vs_D1"]
+        have = [x for x in expected if x in tmp.columns]
+        rows.append(tmp[have])
+
+    if not rows:
+        return pd.DataFrame(
+            columns=["mouse_id", "Condition", "Decile_Index", "Mean_Correlation", "Noise_Mean_Corr", "Corr_Delta_vs_D1", "Noise_Delta_vs_D1"]
+        )
+    return pd.concat(rows, ignore_index=True)
+
+
 def build_rr_overlap_dataframe(bundles):
     rows = []
     for b in bundles:
@@ -355,27 +472,100 @@ def p_to_star(p_val):
     return "ns"
 
 
+def style_axis(ax, grid_axis="y"):
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_linewidth(1.0)
+    ax.spines["bottom"].set_linewidth(1.0)
+    if grid_axis is not None:
+        ax.grid(axis=grid_axis, linestyle="--", alpha=0.25, linewidth=0.8)
+
+
+def save_figure_variants(fig, save_path):
+    """Save figure with title (default path) and a no-title variant."""
+    fig.tight_layout()
+    fig.savefig(save_path, dpi=300, bbox_inches="tight")
+
+    suptitle = fig._suptitle
+    if suptitle is not None:
+        suptitle.set_visible(False)
+    for ax in fig.axes:
+        ax.set_title("")
+
+    stem, ext = os.path.splitext(save_path)
+    no_title_path = f"{stem}_notitle{ext}"
+    fig.savefig(no_title_path, dpi=300, bbox_inches="tight")
+    return save_path
+
+
 def plot_group_metric(df, metric, ylabel, title, stat_res, save_name):
     if metric not in df.columns or df[metric].isna().all():
         return None
 
-    n_mice = df["mouse_id"].nunique()
-    plt.figure(figsize=(6, 5))
-    if n_mice >= 3:
-        sns.boxplot(data=df, x="Condition", y=metric, order=CONDITIONS, hue="Condition", palette=COLORS, width=0.5, showfliers=False, legend=False)
-        sns.stripplot(data=df, x="Condition", y=metric, order=CONDITIONS, color="black", size=5, alpha=0.7, jitter=True)
-    else:
-        sns.stripplot(data=df, x="Condition", y=metric, order=CONDITIONS, hue="Condition", palette=COLORS, size=8, alpha=0.85, jitter=False, legend=False)
+    from matplotlib.lines import Line2D
 
-    plt.title(f"{title}\n{stat_res.get('main_effect', '')}")
-    plt.ylabel(ylabel)
-    plt.xlabel("")
-    plt.grid(axis="y", linestyle="--", alpha=0.3)
-    sns.despine()
+    sub = df[["mouse_id", "Condition", metric]].dropna().copy()
+    if sub.empty:
+        return None
+    sub["Condition"] = pd.Categorical(sub["Condition"], categories=CONDITIONS, ordered=True)
+    sub = sub.sort_values(["mouse_id", "Condition"])
+
+    fig, ax = plt.subplots(figsize=(6.2, 5.1))
+    x = np.arange(len(CONDITIONS))
+
+    # Paired trajectories (within-mouse repeated-measure visualization)
+    pivot = sub.pivot(index="mouse_id", columns="Condition", values=metric).reindex(columns=CONDITIONS)
+    for _, row in pivot.iterrows():
+        y = row.values.astype(float)
+        mask = ~np.isnan(y)
+        if mask.sum() >= 2:
+            ax.plot(x[mask], y[mask], color="#C0C0C0", lw=0.9, alpha=0.7, zorder=1)
+
+    # Condition-wise jittered points
+    rng = np.random.default_rng(42)
+    for i, cond in enumerate(CONDITIONS):
+        vals = sub.loc[sub["Condition"] == cond, metric].values
+        if len(vals) == 0:
+            continue
+        jitter = rng.uniform(-0.08, 0.08, size=len(vals))
+        ax.scatter(
+            np.full(len(vals), i) + jitter,
+            vals,
+            s=28,
+            facecolor=COLORS[cond],
+            edgecolor="white",
+            linewidth=0.5,
+            alpha=0.9,
+            zorder=3,
+        )
+
+    # Mean ± SEM overlay
+    means = sub.groupby("Condition")[metric].mean().reindex(CONDITIONS)
+    sems = sub.groupby("Condition")[metric].sem().reindex(CONDITIONS)
+    ax.errorbar(
+        x,
+        means.values,
+        yerr=sems.values,
+        fmt="o-",
+        color="#202020",
+        ecolor="#202020",
+        lw=1.8,
+        capsize=3.5,
+        markersize=4.8,
+        zorder=4,
+    )
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(CONDITIONS)
+    ax.set_ylabel(ylabel)
+    ax.set_xlabel("")
+    ax.set_title(f"{title}\n{stat_res.get('main_effect', '')}")
+    style_axis(ax, grid_axis="y")
 
     # Add pairwise significance stars when global effect is at least suggestive.
+    n_mice = sub["mouse_id"].nunique()
     if n_mice >= 3 and pd.notna(stat_res.get("p_main")) and stat_res.get("p_main", 1.0) < 0.1:
-        vals = df[metric].dropna()
+        vals = sub[metric].dropna()
         if not vals.empty:
             y_min, y_max = vals.min(), vals.max()
             y_range = y_max - y_min
@@ -391,20 +581,28 @@ def plot_group_metric(df, metric, ylabel, title, stat_res, save_name):
                     continue
                 x1, x2 = CONDITIONS.index(c1), CONDITIONS.index(c2)
                 y = base + i * step
-                plt.plot([x1, x1, x2, x2], [y, y + step * 0.2, y + step * 0.2, y], lw=1.2, c="k")
-                plt.text((x1 + x2) * 0.5, y + step * 0.2, star, ha="center", va="bottom", color="k")
+                ax.plot([x1, x1, x2, x2], [y, y + step * 0.2, y + step * 0.2, y], lw=1.1, c="k")
+                ax.text((x1 + x2) * 0.5, y + step * 0.2, star, ha="center", va="bottom", color="k")
+            ax.set_ylim(top=base + 3.5 * step)
+
+    # Minimal, publication-style legend
+    handles = [
+        Line2D([0], [0], color="#C0C0C0", lw=1.2, label="Mouse paired trajectory"),
+        Line2D([0], [0], color="#202020", lw=1.8, marker="o", markersize=4.8, label="Mean ± SEM"),
+    ]
+    ax.legend(handles=handles, frameon=False, loc="best")
 
     out = os.path.join(GROUP_OUT_DIR, save_name)
-    plt.tight_layout()
-    plt.savefig(out, dpi=300)
-    plt.close()
+    save_figure_variants(fig, out)
+    plt.close(fig)
     return out
 
 
 def plot_decile_curve(decile_df):
     if decile_df.empty:
         return None
-    plt.figure(figsize=(7.5, 5))
+
+    fig, ax = plt.subplots(figsize=(7.5, 5))
     sns.lineplot(
         data=decile_df,
         x="Decile_Index",
@@ -416,17 +614,18 @@ def plot_decile_curve(decile_df):
         errorbar="se",
         marker="o",
         linewidth=2,
+        ax=ax,
     )
-    plt.xticks(np.arange(1, 11))
-    plt.xlabel("Decile (1=lowest, 10=highest)")
-    plt.ylabel("Mean correlation")
-    plt.title("Decile-wise Correlation Curve (Group Mean ± SE)")
-    plt.grid(axis="y", linestyle="--", alpha=0.3)
-    sns.despine()
+    ax.set_xticks(np.arange(1, 11))
+    ax.set_xlabel("Decile (1=lowest, 10=highest)")
+    ax.set_ylabel("Mean correlation")
+    ax.set_title("Decile-wise Correlation Curve (Group Mean +/- SE)")
+    style_axis(ax, grid_axis="y")
+    ax.legend(title="Condition", frameon=False, loc="best")
+
     out = os.path.join(GROUP_OUT_DIR, "group_corr_decile_curve.png")
-    plt.tight_layout()
-    plt.savefig(out, dpi=300)
-    plt.close()
+    save_figure_variants(fig, out)
+    plt.close(fig)
     return out
 
 
@@ -434,28 +633,110 @@ def plot_graph_sw_comparison(graph_long_df, metric):
     sub = graph_long_df[graph_long_df["Metric"] == metric].copy()
     if sub.empty:
         return None
-    plt.figure(figsize=(7.5, 5))
+
+    type_order = [t for t in ["strong", "weak", "strong_threshold", "weak_threshold"] if t in set(sub["Network_Type"].astype(str))]
+    palette = {t: NETWORK_TYPE_COLORS.get(t, "#666666") for t in type_order}
+
+    fig, ax = plt.subplots(figsize=(7.5, 5))
     sns.pointplot(
         data=sub,
         x="Condition",
         y="Value",
         hue="Network_Type",
         order=CONDITIONS,
-        hue_order=["strong", "weak"],
+        hue_order=type_order,
         dodge=0.25,
         capsize=0.1,
         errorbar="se",
-        palette={"strong": "#1F77B4", "weak": "#D55E00"},
+        palette=palette,
+        markers="o",
+        linestyles="-",
+        ax=ax,
     )
-    plt.xlabel("")
-    plt.ylabel(metric)
-    plt.title(f"Strong vs Weak Graph Metric: {metric}")
-    plt.grid(axis="y", linestyle="--", alpha=0.3)
-    sns.despine()
+
+    ax.set_xlabel("")
+    ax.set_ylabel(metric)
+    ax.set_title(f"Strong vs Weak Graph Metric: {metric}")
+    style_axis(ax, grid_axis="y")
+
+    handles, labels = ax.get_legend_handles_labels()
+    labels = [NETWORK_TYPE_LABELS.get(lb, lb) for lb in labels]
+    ax.legend(handles, labels, title="Edge subset", frameon=False, loc="best")
+
     out = os.path.join(GROUP_OUT_DIR, f"group_graph_sw_{metric}.png")
-    plt.tight_layout()
-    plt.savefig(out, dpi=300)
-    plt.close()
+    save_figure_variants(fig, out)
+    plt.close(fig)
+    return out
+
+
+def plot_noise_decile_curve(noise_decile_df):
+    if noise_decile_df.empty or "Noise_Mean_Corr" not in noise_decile_df.columns:
+        return None
+
+    fig, ax = plt.subplots(figsize=(7.5, 5))
+    sns.lineplot(
+        data=noise_decile_df,
+        x="Decile_Index",
+        y="Noise_Mean_Corr",
+        hue="Condition",
+        hue_order=CONDITIONS,
+        palette=COLORS,
+        estimator="mean",
+        errorbar="se",
+        marker="o",
+        linewidth=2,
+        ax=ax,
+    )
+    ax.set_xticks(np.arange(1, 11))
+    ax.set_xlabel("Decile (1=lowest, 10=highest)")
+    ax.set_ylabel("Mean noise correlation")
+    ax.set_title("Noise-correlation Decile Curve (Group Mean +/- SE)")
+    style_axis(ax, grid_axis="y")
+    ax.legend(title="Condition", frameon=False, loc="best")
+
+    out = os.path.join(GROUP_OUT_DIR, "group_noise_corr_decile_curve.png")
+    save_figure_variants(fig, out)
+    plt.close(fig)
+    return out
+
+
+def plot_noise_coupling_trajectory(noise_decile_df):
+    if noise_decile_df.empty:
+        return None
+    need = {"Corr_Delta_vs_D1", "Noise_Delta_vs_D1"}
+    if not need.issubset(set(noise_decile_df.columns)):
+        return None
+
+    plot_df = (
+        noise_decile_df.groupby(["Condition", "Decile_Index"], as_index=False)[["Corr_Delta_vs_D1", "Noise_Delta_vs_D1"]]
+        .mean()
+    )
+
+    fig, ax = plt.subplots(figsize=(7.5, 5.5))
+    for cond in CONDITIONS:
+        sub = plot_df[plot_df["Condition"] == cond].sort_values("Decile_Index")
+        if sub.empty:
+            continue
+        ax.plot(
+            sub["Corr_Delta_vs_D1"],
+            sub["Noise_Delta_vs_D1"],
+            marker="o",
+            linewidth=2,
+            color=COLORS.get(cond, None),
+            label=cond,
+        )
+
+    ax.axhline(0, color="#999999", lw=1, ls="--")
+    ax.axvline(0, color="#999999", lw=1, ls="--")
+    ax.set_xlabel("Corr delta vs decile1")
+    ax.set_ylabel("Noise-corr delta vs decile1")
+    ax.set_title("Coupling Trajectory: Correlation vs Noise by Decile")
+    style_axis(ax, grid_axis="both")
+    ax.legend(title="Condition", frameon=False, loc="best")
+
+    out = os.path.join(GROUP_OUT_DIR, "group_noise_corr_coupling_trajectory.png")
+    save_figure_variants(fig, out)
+    plt.close(fig)
     return out
 
 
@@ -535,6 +816,18 @@ if __name__ == "__main__":
         graph_thr_long_df.to_csv(graph_thr_long_csv, index=False)
         print(f"[*] Saved threshold strong-vs-weak graph long table: {graph_thr_long_csv}")
 
+    sig_noise_long_df = build_sig_noise_summary_long_dataframe(bundles)
+    if not sig_noise_long_df.empty:
+        sig_noise_long_csv = os.path.join(GROUP_OUT_DIR, "group_sig_noise_summary_long.csv")
+        sig_noise_long_df.to_csv(sig_noise_long_csv, index=False)
+        print(f"[*] Saved signal/noise summary long table: {sig_noise_long_csv}")
+
+    noise_decile_long_df = build_noise_decile_coupling_long_dataframe(bundles)
+    if not noise_decile_long_df.empty:
+        noise_decile_long_csv = os.path.join(GROUP_OUT_DIR, "group_noise_corr_decile_coupling_long.csv")
+        noise_decile_long_df.to_csv(noise_decile_long_csv, index=False)
+        print(f"[*] Saved noise decile coupling long table: {noise_decile_long_csv}")
+
     rr_overlap_df = build_rr_overlap_dataframe(bundles)
     if not rr_overlap_df.empty:
         rr_csv = os.path.join(GROUP_OUT_DIR, "group_rr_overlap_long.csv")
@@ -555,6 +848,11 @@ if __name__ == "__main__":
         "Effective_Dim_PR",
         "Effective_Dim_eRank",
         "Effective_Dim_90Var",
+        "Sig_Mean_Corr",
+        "Noise_Mean_Corr",
+        "SigAbs_Mean_Corr",
+        "NoiseAbs_Mean_Corr",
+        "SigNoise_Coupling_r",
         "GraphStrong_efficiency",
         "GraphStrong_modularity",
         "GraphStrong_local_efficiency",
@@ -592,6 +890,11 @@ if __name__ == "__main__":
     image_paths["Participation Ratio (Mean)"] = plot_group_metric(master_df, "PR_Mean", "PR", "Trial Participation Ratio (Mean)", stat_results.get("PR_Mean", {}), "group_pr_mean.png")
     image_paths["Effective Dim (PR)"] = plot_group_metric(master_df, "Effective_Dim_PR", "Dimension", "Effective Dimension (PR)", stat_results.get("Effective_Dim_PR", {}), "group_effdim_pr.png")
     image_paths["Effective Dim (eRank)"] = plot_group_metric(master_df, "Effective_Dim_eRank", "Dimension", "Effective Dimension (eRank)", stat_results.get("Effective_Dim_eRank", {}), "group_effdim_erank.png")
+    image_paths["Signal Corr (Mean)"] = plot_group_metric(master_df, "Sig_Mean_Corr", "Correlation", "Signal Correlation (Mean)", stat_results.get("Sig_Mean_Corr", {}), "group_signal_corr_mean.png")
+    image_paths["Noise Corr (Mean)"] = plot_group_metric(master_df, "Noise_Mean_Corr", "Correlation", "Noise Correlation (Mean)", stat_results.get("Noise_Mean_Corr", {}), "group_noise_corr_mean.png")
+    image_paths["Signal Corr |r| (Mean)"] = plot_group_metric(master_df, "SigAbs_Mean_Corr", "|Correlation|", "Signal Correlation |r| (Mean)", stat_results.get("SigAbs_Mean_Corr", {}), "group_signal_corr_abs_mean.png")
+    image_paths["Noise Corr |r| (Mean)"] = plot_group_metric(master_df, "NoiseAbs_Mean_Corr", "|Correlation|", "Noise Correlation |r| (Mean)", stat_results.get("NoiseAbs_Mean_Corr", {}), "group_noise_corr_abs_mean.png")
+    image_paths["Signal-Noise Coupling r"] = plot_group_metric(master_df, "SigNoise_Coupling_r", "r", "Signal-Noise Coupling", stat_results.get("SigNoise_Coupling_r", {}), "group_sig_noise_coupling_r.png")
 
     # Strong/Weak graph metrics: condition-wise significance within each graph type
     for gm in GRAPH_METRICS:
@@ -630,6 +933,8 @@ if __name__ == "__main__":
         )
 
     image_paths["Decile Correlation Curve"] = plot_decile_curve(decile_df)
+    image_paths["Noise Decile Curve"] = plot_noise_decile_curve(noise_decile_long_df)
+    image_paths["Noise-Coupling Trajectory"] = plot_noise_coupling_trajectory(noise_decile_long_df)
     for gm in GRAPH_METRICS:
         image_paths[f"Graph Strong vs Weak - {gm}"] = plot_graph_sw_comparison(graph_long_df, gm)
     for gm in GRAPH_METRICS:
