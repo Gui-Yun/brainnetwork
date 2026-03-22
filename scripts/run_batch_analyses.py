@@ -55,7 +55,7 @@ data_paths = ["M21_1107", "M71_1024", "M73_1128", "M77_1031", "M77_1107", "M78_1
 for idx, path in enumerate(data_paths):
     data_path = base_dir + data_paths[idx] # 'M77_1031'
     print(f"Processing data from: {data_path}")
-    save_dir = "../results/" + data_paths[idx] 
+    save_dir = "./results/" + data_paths[idx] 
 
     data_out_dir = os.path.join(save_dir, "data")
     fig_out_dir = os.path.join(save_dir, "figures")

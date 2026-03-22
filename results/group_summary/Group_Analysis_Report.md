@@ -6,54 +6,28 @@
 
 ## 1. Descriptive Statistics (Mean ± SEM)
 
-| Condition   | Entropy         | Mean_RSM_Sim    | Mean_Correlation   | Strong_Correlation   | Weak_Correlation   | Strong_Weak_Gap   | Participants_Ratio   | Gini_Mean       | Gini_STD        | PR_Mean          | PR_STD           | PR_Norm_Mean    | PR_Norm_STD     | Effective_Dim_PR   | Effective_Dim_eRank   | Effective_Dim_90Var   | GraphStrong_efficiency   | GraphWeak_efficiency   | GraphGap_efficiency   | GraphStrong_modularity   | GraphWeak_modularity   | GraphGap_modularity   | GraphStrong_local_efficiency   | GraphWeak_local_efficiency   | GraphGap_local_efficiency   | GraphStrong_avg_clustering   | GraphWeak_avg_clustering   | GraphGap_avg_clustering   | GraphThrStrong_efficiency   | GraphThrWeak_efficiency   | GraphThrGap_efficiency   | GraphThrStrong_modularity   | GraphThrWeak_modularity   | GraphThrGap_modularity   | GraphThrStrong_local_efficiency   | GraphThrWeak_local_efficiency   | GraphThrGap_local_efficiency   | GraphThrStrong_avg_clustering   | GraphThrWeak_avg_clustering   | GraphThrGap_avg_clustering   | Sig_Mean_Corr   | Noise_Mean_Corr   | SigAbs_Mean_Corr   | NoiseAbs_Mean_Corr   | SigNoise_Coupling_r   |
-|:------------|:----------------|:----------------|:-------------------|:---------------------|:-------------------|:------------------|:---------------------|:----------------|:----------------|:-----------------|:-----------------|:----------------|:----------------|:-------------------|:----------------------|:----------------------|:-------------------------|:-----------------------|:----------------------|:-------------------------|:-----------------------|:----------------------|:-------------------------------|:-----------------------------|:----------------------------|:-----------------------------|:---------------------------|:--------------------------|:----------------------------|:--------------------------|:-------------------------|:----------------------------|:--------------------------|:-------------------------|:----------------------------------|:--------------------------------|:-------------------------------|:--------------------------------|:------------------------------|:-----------------------------|:----------------|:------------------|:-------------------|:---------------------|:----------------------|
-| Convergent  | 3.6573 ± 0.0945 | 0.5663 ± 0.0112 | 0.2074 ± 0.0104    | 0.3902 ± 0.0115      | 0.0727 ± 0.0092    | 0.3175 ± 0.006    | 1.6652 ± 0.1043      | 0.6031 ± 0.0182 | 0.0769 ± 0.0059 | 41.8924 ± 6.6473 | 16.7756 ± 2.5852 | 0.1179 ± 0.0144 | 0.0481 ± 0.0062 | 12.2162 ± 0.8975   | 19.6619 ± 1.1983      | 21.125 ± 1.3554       | 0.278 ± 0.018            | 0.422 ± 0.027          | -0.1439 ± 0.0154      | 0.3699 ± 0.0261          | 0.2033 ± 0.0146        | 0.1666 ± 0.0151       | 0.7393 ± 0.0155                | 0.4151 ± 0.072               | 0.3242 ± 0.0635             | 0.6348 ± 0.0141              | 0.2585 ± 0.0495            | 0.3763 ± 0.0461           | 0.2812 ± 0.0396             | 0.4714 ± 0.0505           | -0.1902 ± 0.0857         | 0.3776 ± 0.043              | 0.1569 ± 0.0261           | 0.2207 ± 0.0621          | 0.7552 ± 0.0103                   | 0.5354 ± 0.1052                 | 0.2198 ± 0.1077                | 0.6539 ± 0.0108                 | 0.3539 ± 0.075                | 0.3 ± 0.0736                 | 0.8108 ± 0.0117 | 0.1404 ± 0.0571   | 0.8108 ± 0.0117    | 0.1933 ± 0.0397      | 0.1281 ± 0.0311       |
-| Divergent   | 3.7266 ± 0.0733 | 0.5481 ± 0.0203 | 0.2051 ± 0.0114    | 0.3894 ± 0.0136      | 0.0728 ± 0.0099    | 0.3166 ± 0.008    | 1.724 ± 0.1179       | 0.6099 ± 0.0182 | 0.0855 ± 0.0058 | 41.8952 ± 6.6255 | 16.8776 ± 2.183  | 0.1158 ± 0.0122 | 0.0487 ± 0.0051 | 12.1006 ± 1.0277   | 19.2868 ± 1.3831      | 20.5 ± 1.4392         | 0.285 ± 0.0174           | 0.4114 ± 0.0261        | -0.1263 ± 0.0138      | 0.3761 ± 0.0354          | 0.1957 ± 0.0145        | 0.1805 ± 0.0247       | 0.7325 ± 0.0164                | 0.4057 ± 0.0618              | 0.3267 ± 0.0584             | 0.6252 ± 0.0119              | 0.2401 ± 0.0376            | 0.3851 ± 0.0388           | 0.2809 ± 0.0347             | 0.4666 ± 0.057            | -0.1857 ± 0.0904         | 0.3962 ± 0.0561             | 0.1565 ± 0.0268           | 0.2398 ± 0.0762          | 0.7473 ± 0.0091                   | 0.5526 ± 0.0892                 | 0.1947 ± 0.0943                | 0.6468 ± 0.0038                 | 0.3523 ± 0.0599               | 0.2945 ± 0.0589              | 0.8077 ± 0.0229 | 0.1858 ± 0.0876   | 0.8081 ± 0.0225    | 0.2188 ± 0.0688      | 0.1161 ± 0.0306       |
-| Random      | 3.5989 ± 0.0692 | 0.6264 ± 0.0181 | 0.1985 ± 0.0142    | 0.391 ± 0.0154       | 0.0546 ± 0.0109    | 0.3364 ± 0.0107   | 2.5279 ± 0.2484      | 0.6291 ± 0.0196 | 0.0783 ± 0.006  | 35.9484 ± 4.2529 | 16.5695 ± 2.2046 | 0.1074 ± 0.0149 | 0.048 ± 0.0052  | 11.4929 ± 0.8069   | 18.7792 ± 1.1476      | 20.25 ± 1.3059        | 0.2678 ± 0.0171          | 0.4513 ± 0.0202        | -0.1835 ± 0.0214      | 0.3634 ± 0.0425          | 0.1884 ± 0.0127        | 0.1751 ± 0.0317       | 0.7123 ± 0.0216                | 0.4467 ± 0.0627              | 0.2655 ± 0.0664             | 0.6091 ± 0.0177              | 0.2752 ± 0.0413            | 0.3339 ± 0.048            | 0.2876 ± 0.0387             | 0.547 ± 0.04              | -0.2594 ± 0.0759         | 0.3637 ± 0.0662             | 0.1277 ± 0.0197           | 0.236 ± 0.0781           | 0.7261 ± 0.0115                   | 0.6631 ± 0.0787                 | 0.0631 ± 0.0851                | 0.6207 ± 0.0087                 | 0.4724 ± 0.0698               | 0.1483 ± 0.0732              | 0.671 ± 0.0824  | 0.1153 ± 0.0595   | 0.6742 ± 0.0792    | 0.1983 ± 0.0343      | 0.1826 ± 0.0384       |
+| Condition   | Entropy         | Mean_RSM_Sim    | Mean_Correlation   | Strong_Correlation   | Weak_Correlation   | Strong_Weak_Gap   | Participants_Ratio   | Gini_Mean       | Gini_STD        | PR_Mean          | PR_STD           | PR_Norm_Mean    | PR_Norm_STD     | Effective_Dim_PR   | Effective_Dim_eRank   | Effective_Dim_90Var   | Sig_Mean_Corr   | Noise_Mean_Corr   | SigAbs_Mean_Corr   | NoiseAbs_Mean_Corr   | SigNoise_Coupling_r   |
+|:------------|:----------------|:----------------|:-------------------|:---------------------|:-------------------|:------------------|:---------------------|:----------------|:----------------|:-----------------|:-----------------|:----------------|:----------------|:-------------------|:----------------------|:----------------------|:----------------|:------------------|:-------------------|:---------------------|:----------------------|
+| Convergent  | 3.6272 ± 0.085  | 0.5712 ± 0.0109 | 0.2074 ± 0.0104    | 0.3902 ± 0.0115      | 0.0727 ± 0.0092    | 0.3175 ± 0.006    | 1.6652 ± 0.1043      | 0.6033 ± 0.0185 | 0.0756 ± 0.0056 | 42.1088 ± 6.5365 | 17.0589 ± 2.7404 | 0.119 ± 0.0145  | 0.0478 ± 0.0064 | 12.9609 ± 1.1693   | 20.1429 ± 1.3999      | 20.875 ± 1.3685       | 0.8041 ± 0.0105 | 0.1386 ± 0.016    | 0.8044 ± 0.0104    | 0.191 ± 0.0102       | 0.1692 ± 0.0228       |
+| Divergent   | 3.6478 ± 0.0861 | 0.5638 ± 0.0236 | 0.2051 ± 0.0114    | 0.3894 ± 0.0136      | 0.0728 ± 0.0099    | 0.3166 ± 0.008    | 1.724 ± 0.1179       | 0.6022 ± 0.0193 | 0.0836 ± 0.006  | 43.6522 ± 6.8255 | 17.6853 ± 2.5414 | 0.1205 ± 0.0119 | 0.0499 ± 0.0044 | 12.007 ± 1.1759    | 19.3624 ± 1.5661      | 20.5 ± 1.5            | 0.8128 ± 0.0076 | 0.162 ± 0.0199    | 0.8129 ± 0.0075    | 0.2052 ± 0.0146      | 0.1702 ± 0.0169       |
+| Random      | 3.5989 ± 0.0692 | 0.6264 ± 0.0181 | 0.1985 ± 0.0142    | 0.391 ± 0.0154       | 0.0546 ± 0.0109    | 0.3364 ± 0.0107   | 2.5279 ± 0.2484      | 0.6291 ± 0.0196 | 0.0783 ± 0.006  | 35.9484 ± 4.2529 | 16.5695 ± 2.2046 | 0.1074 ± 0.0149 | 0.048 ± 0.0052  | 11.4929 ± 0.8069   | 18.7792 ± 1.1476      | 20.25 ± 1.3059        | 0.7198 ± 0.0223 | 0.1384 ± 0.0185   | 0.7215 ± 0.0216    | 0.2044 ± 0.0113      | 0.1769 ± 0.0096       |
 
 ## 2. Friedman + Wilcoxon Tests
 
 | Metric | Main Effect | Div vs Con | Div vs Rand | Con vs Rand |
 | :--- | :--- | :--- | :--- | :--- |
-| **Entropy** | Friedman $\chi^2$=3.25, $p$=1.969e-01 | p=0.3125 (ns) | p=0.1094 (ns) | p=0.5469 (ns) |
-| **Mean_RSM_Sim** | Friedman $\chi^2$=7.00, $p$=3.020e-02 | p=0.1953 (ns) | p=0.0156 (*) | p=0.0234 (*) |
+| **Entropy** | Friedman $\chi^2$=0.75, $p$=6.873e-01 | p=0.7422 (ns) | p=0.5469 (ns) | p=0.7422 (ns) |
+| **Mean_RSM_Sim** | Friedman $\chi^2$=4.75, $p$=9.301e-02 | p=0.8438 (ns) | p=0.0391 (*) | p=0.0234 (*) |
 | **Mean_Correlation** | Friedman $\chi^2$=3.25, $p$=1.969e-01 | p=0.3125 (ns) | p=0.3828 (ns) | p=0.3125 (ns) |
 | **Strong_Correlation** | Friedman $\chi^2$=0.75, $p$=6.873e-01 | p=0.5469 (ns) | p=0.6406 (ns) | p=0.5469 (ns) |
 | **Weak_Correlation** | Friedman $\chi^2$=7.00, $p$=3.020e-02 | p=1.0000 (ns) | p=0.0156 (*) | p=0.0234 (*) |
 | **Strong_Weak_Gap** | Friedman $\chi^2$=6.25, $p$=4.394e-02 | p=0.7422 (ns) | p=0.0391 (*) | p=0.0547 (ns) |
 | **Participants_Ratio** | Friedman $\chi^2$=9.25, $p$=9.804e-03 | p=0.6406 (ns) | p=0.0078 (**) | p=0.0156 (*) |
-| **Gini_Mean** | Friedman $\chi^2$=5.25, $p$=7.244e-02 | p=0.6406 (ns) | p=0.1953 (ns) | p=0.0781 (ns) |
-| **PR_Mean** | Friedman $\chi^2$=3.25, $p$=1.969e-01 | p=0.9453 (ns) | p=0.1484 (ns) | p=0.2500 (ns) |
-| **PR_Norm_Mean** | Friedman $\chi^2$=3.25, $p$=1.969e-01 | p=0.9453 (ns) | p=0.1953 (ns) | p=0.3125 (ns) |
-| **Effective_Dim_PR** | Friedman $\chi^2$=0.25, $p$=8.825e-01 | p=1.0000 (ns) | p=0.3828 (ns) | p=0.6406 (ns) |
-| **Effective_Dim_eRank** | Friedman $\chi^2$=0.75, $p$=6.873e-01 | p=0.7422 (ns) | p=0.4609 (ns) | p=0.4609 (ns) |
-| **Effective_Dim_90Var** | Friedman $\chi^2$=2.67, $p$=2.636e-01 | p=0.2500 (ns) | p=0.7500 (ns) | p=0.2500 (ns) |
-| **Sig_Mean_Corr** | N too small | p=nan (ns) | p=nan (ns) | p=nan (ns) |
-| **Noise_Mean_Corr** | N too small | p=nan (ns) | p=nan (ns) | p=nan (ns) |
-| **SigAbs_Mean_Corr** | N too small | p=nan (ns) | p=nan (ns) | p=nan (ns) |
-| **NoiseAbs_Mean_Corr** | N too small | p=nan (ns) | p=nan (ns) | p=nan (ns) |
-| **SigNoise_Coupling_r** | N too small | p=nan (ns) | p=nan (ns) | p=nan (ns) |
-| **GraphStrong_efficiency** | Friedman $\chi^2$=1.75, $p$=4.169e-01 | p=0.9453 (ns) | p=0.1094 (ns) | p=0.4609 (ns) |
-| **GraphStrong_modularity** | Friedman $\chi^2$=0.25, $p$=8.825e-01 | p=0.7422 (ns) | p=0.6406 (ns) | p=0.6406 (ns) |
-| **GraphStrong_local_efficiency** | Friedman $\chi^2$=3.25, $p$=1.969e-01 | p=0.5469 (ns) | p=0.1484 (ns) | p=0.1094 (ns) |
-| **GraphStrong_avg_clustering** | Friedman $\chi^2$=1.75, $p$=4.169e-01 | p=0.7422 (ns) | p=0.2500 (ns) | p=0.1484 (ns) |
-| **GraphWeak_efficiency** | Friedman $\chi^2$=4.00, $p$=1.353e-01 | p=0.4609 (ns) | p=0.0781 (ns) | p=0.3828 (ns) |
-| **GraphWeak_modularity** | Friedman $\chi^2$=4.00, $p$=1.353e-01 | p=0.4609 (ns) | p=0.4609 (ns) | p=0.0234 (*) |
-| **GraphWeak_local_efficiency** | Friedman $\chi^2$=0.25, $p$=8.825e-01 | p=0.7422 (ns) | p=0.6406 (ns) | p=0.8438 (ns) |
-| **GraphWeak_avg_clustering** | Friedman $\chi^2$=0.25, $p$=8.825e-01 | p=0.8438 (ns) | p=0.3828 (ns) | p=0.9453 (ns) |
-| **GraphThrStrong_efficiency** | Friedman $\chi^2$=1.75, $p$=4.169e-01 | p=0.7422 (ns) | p=0.9453 (ns) | p=0.5469 (ns) |
-| **GraphThrStrong_modularity** | Friedman $\chi^2$=3.00, $p$=2.231e-01 | p=0.6406 (ns) | p=0.3125 (ns) | p=0.4609 (ns) |
-| **GraphThrStrong_local_efficiency** | Friedman $\chi^2$=5.25, $p$=7.244e-02 | p=0.5469 (ns) | p=0.0781 (ns) | p=0.0547 (ns) |
-| **GraphThrStrong_avg_clustering** | Friedman $\chi^2$=3.25, $p$=1.969e-01 | p=0.7422 (ns) | p=0.0547 (ns) | p=0.0391 (*) |
-| **GraphThrWeak_efficiency** | Friedman $\chi^2$=6.75, $p$=3.422e-02 | p=0.9453 (ns) | p=0.0156 (*) | p=0.0156 (*) |
-| **GraphThrWeak_modularity** | Friedman $\chi^2$=9.25, $p$=9.804e-03 | p=0.8438 (ns) | p=0.0078 (**) | p=0.0156 (*) |
-| **GraphThrWeak_local_efficiency** | Friedman $\chi^2$=7.00, $p$=3.020e-02 | p=0.3828 (ns) | p=0.0078 (**) | p=0.0391 (*) |
-| **GraphThrWeak_avg_clustering** | Friedman $\chi^2$=7.00, $p$=3.020e-02 | p=1.0000 (ns) | p=0.0078 (**) | p=0.0391 (*) |
-| **GraphGap_efficiency** | Friedman $\chi^2$=5.25, $p$=7.244e-02 | p=0.4609 (ns) | p=0.0391 (*) | p=0.2500 (ns) |
-| **GraphGap_modularity** | Friedman $\chi^2$=0.75, $p$=6.873e-01 | p=0.7422 (ns) | p=1.0000 (ns) | p=0.8438 (ns) |
-| **GraphGap_local_efficiency** | Friedman $\chi^2$=0.25, $p$=8.825e-01 | p=0.6406 (ns) | p=0.1953 (ns) | p=0.7422 (ns) |
-| **GraphGap_avg_clustering** | Friedman $\chi^2$=0.25, $p$=8.825e-01 | p=0.9453 (ns) | p=0.1953 (ns) | p=0.9453 (ns) |
+| **Gini_Mean** | Friedman $\chi^2$=7.00, $p$=3.020e-02 | p=0.8438 (ns) | p=0.0391 (*) | p=0.1094 (ns) |
+| **PR_Mean** | Friedman $\chi^2$=1.75, $p$=4.169e-01 | p=0.5469 (ns) | p=0.1094 (ns) | p=0.1953 (ns) |
+| **Effective_Dim_PR** | Friedman $\chi^2$=2.25, $p$=3.247e-01 | p=0.0391 (*) | p=0.8438 (ns) | p=0.3125 (ns) |
+| **Sig_Mean_Corr** | Friedman $\chi^2$=13.00, $p$=1.503e-03 | p=0.3125 (ns) | p=0.0078 (**) | p=0.0078 (**) |
+| **Noise_Mean_Corr** | Friedman $\chi^2$=2.25, $p$=3.247e-01 | p=0.1484 (ns) | p=0.1953 (ns) | p=0.8438 (ns) |
 
 ## 3. RR Overlap Summary Across Mice
 
@@ -70,14 +44,11 @@
 
 ## 4. Figures
 
-### Representation Entropy
-![Representation Entropy](./group_entropy.png)
+### Combined Strong vs Weak
+![Combined Strong vs Weak](./group_combined_strong_weak.png)
 
 ### RSM Mean Similarity
 ![RSM Mean Similarity](./group_mean_rsm_sim.png)
-
-### Mean Pairwise Correlation
-![Mean Pairwise Correlation](./group_mean_correlation.png)
 
 ### Strong Connections (Top 10%)
 ![Strong Connections (Top 10%)](./group_strong_correlation.png)
@@ -94,30 +65,18 @@
 ### Response Gini (Mean)
 ![Response Gini (Mean)](./group_gini_mean.png)
 
-### Participation Ratio (Mean)
-![Participation Ratio (Mean)](./group_pr_mean.png)
-
-### Effective Dimension (PR)
-![Effective Dimension (PR)](./group_effective_dim_pr.png)
-
 ### Decile Correlation Curve
 ![Decile Correlation Curve](./group_corr_decile_curve.png)
 
 ### Noise Decile Curve
 ![Noise Decile Curve](./group_noise_corr_decile_curve.png)
 
-### Noise-Coupling Trajectory
-![Noise-Coupling Trajectory](./group_noise_corr_coupling_trajectory.png)
+### Cross-animal Binding
+![Cross-animal Binding](./group_cross_animal_binding.png)
 
-### Graph Strong vs Weak - efficiency
-![Graph Strong vs Weak - efficiency](./group_graph_sw_efficiency.png)
+### Absolute State Binding
+![Absolute State Binding](./group_absolute_state_binding.png)
 
-### Graph Strong vs Weak - modularity
-![Graph Strong vs Weak - modularity](./group_graph_sw_modularity.png)
-
-### Graph Strong vs Weak - local_efficiency
-![Graph Strong vs Weak - local_efficiency](./group_graph_sw_local_efficiency.png)
-
-### Graph Strong vs Weak - avg_clustering
-![Graph Strong vs Weak - avg_clustering](./group_graph_sw_avg_clustering.png)
+### LMM State Binding
+![LMM State Binding](./group_lmm_state_binding.png)
 
