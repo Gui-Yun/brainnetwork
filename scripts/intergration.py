@@ -59,6 +59,18 @@ def load_optional_csv(data_dir, filename):
         return None
 
 
+def load_optional_csv_by_pattern(data_dir, pattern):
+    paths = sorted(glob.glob(os.path.join(data_dir, pattern)))
+    if not paths:
+        return None
+    path = paths[0]
+    try:
+        return pd.read_csv(path)
+    except Exception as exc:
+        print(f"[!] Failed to read {path}: {exc}")
+        return None
+
+
 def load_all_mice_bundles(base_dir):
     pattern = os.path.join(base_dir, "*", "data", "*_statistics.json")
     json_files = sorted(glob.glob(pattern))
@@ -81,6 +93,7 @@ def load_all_mice_bundles(base_dir):
                 "trial_shape_summary": load_optional_csv(data_dir, "trial_response_shape_summary.csv"),
                 "effective_dim": load_optional_csv(data_dir, "effective_dimensionality_by_class.csv"),
                 "graph_sw": load_optional_csv(data_dir, "network_metrics_strong_vs_weak.csv"),
+                "graph_thr": load_optional_csv_by_pattern(data_dir, "network_metrics_threshold_*.csv"),
                 "rr_overlap": load_optional_csv(data_dir, "rr_overlap_summary.csv"),
                 "corr_deciles_csv": load_optional_csv(data_dir, f"{mouse_id}_correlation_deciles.csv"),
             }
@@ -126,6 +139,31 @@ def _graph_condition_metrics(graph_df, condition):
         cols[f"GraphStrong_{metric}"] = strong
         cols[f"GraphWeak_{metric}"] = weak
         cols[f"GraphGap_{metric}"] = strong - weak if pd.notna(strong) and pd.notna(weak) else np.nan
+    return cols
+
+
+def _graph_threshold_condition_metrics(graph_df, condition):
+    cols = {}
+    if graph_df is None or graph_df.empty:
+        return cols
+
+    g = graph_df.copy()
+    g["Class_Name"] = g["Class_Name"].map(normalize_condition)
+    g["Network_Type"] = g["Network_Type"].astype(str).str.lower()
+    sub = g[g["Class_Name"] == condition]
+    if sub.empty:
+        return cols
+
+    for metric in GRAPH_METRICS:
+        strong = safe_float(
+            sub.loc[sub["Network_Type"] == "strong_threshold", metric].iloc[0]
+        ) if (sub["Network_Type"] == "strong_threshold").any() else np.nan
+        weak = safe_float(
+            sub.loc[sub["Network_Type"] == "weak_threshold", metric].iloc[0]
+        ) if (sub["Network_Type"] == "weak_threshold").any() else np.nan
+        cols[f"GraphThrStrong_{metric}"] = strong
+        cols[f"GraphThrWeak_{metric}"] = weak
+        cols[f"GraphThrGap_{metric}"] = strong - weak if pd.notna(strong) and pd.notna(weak) else np.nan
     return cols
 
 
@@ -193,6 +231,7 @@ def build_master_dataframe(bundles):
             row.update(_trial_shape_by_condition(b["trial_shape_summary"], cond))
             row.update(_effective_dim_by_condition(b["effective_dim"], cond))
             row.update(_graph_condition_metrics(b["graph_sw"], cond))
+            row.update(_graph_threshold_condition_metrics(b["graph_thr"], cond))
             rows.append(row)
 
     df = pd.DataFrame(rows)
@@ -231,6 +270,29 @@ def build_graph_sw_long_dataframe(bundles):
     rows = []
     for b in bundles:
         g = b["graph_sw"]
+        if g is None or g.empty:
+            continue
+        tmp = g.copy()
+        tmp["mouse_id"] = b["mouse_id"]
+        tmp["Condition"] = tmp["Class_Name"].map(normalize_condition)
+        tmp["Network_Type"] = tmp["Network_Type"].astype(str).str.lower()
+        tmp = tmp[tmp["Condition"].isin(CONDITIONS)]
+        for metric in GRAPH_METRICS:
+            if metric in tmp.columns:
+                keep = tmp[["mouse_id", "Condition", "Network_Type", metric]].copy()
+                keep = keep.rename(columns={metric: "Value"})
+                keep["Metric"] = metric
+                rows.append(keep)
+
+    if not rows:
+        return pd.DataFrame(columns=["mouse_id", "Condition", "Network_Type", "Value", "Metric"])
+    return pd.concat(rows, ignore_index=True)
+
+
+def build_graph_threshold_long_dataframe(bundles):
+    rows = []
+    for b in bundles:
+        g = b["graph_thr"]
         if g is None or g.empty:
             continue
         tmp = g.copy()
@@ -467,6 +529,12 @@ if __name__ == "__main__":
         graph_long_df.to_csv(graph_long_csv, index=False)
         print(f"[*] Saved strong-vs-weak graph long table: {graph_long_csv}")
 
+    graph_thr_long_df = build_graph_threshold_long_dataframe(bundles)
+    if not graph_thr_long_df.empty:
+        graph_thr_long_csv = os.path.join(GROUP_OUT_DIR, "group_graph_threshold_strong_vs_weak_long.csv")
+        graph_thr_long_df.to_csv(graph_thr_long_csv, index=False)
+        print(f"[*] Saved threshold strong-vs-weak graph long table: {graph_thr_long_csv}")
+
     rr_overlap_df = build_rr_overlap_dataframe(bundles)
     if not rr_overlap_df.empty:
         rr_csv = os.path.join(GROUP_OUT_DIR, "group_rr_overlap_long.csv")
@@ -487,6 +555,22 @@ if __name__ == "__main__":
         "Effective_Dim_PR",
         "Effective_Dim_eRank",
         "Effective_Dim_90Var",
+        "GraphStrong_efficiency",
+        "GraphStrong_modularity",
+        "GraphStrong_local_efficiency",
+        "GraphStrong_avg_clustering",
+        "GraphWeak_efficiency",
+        "GraphWeak_modularity",
+        "GraphWeak_local_efficiency",
+        "GraphWeak_avg_clustering",
+        "GraphThrStrong_efficiency",
+        "GraphThrStrong_modularity",
+        "GraphThrStrong_local_efficiency",
+        "GraphThrStrong_avg_clustering",
+        "GraphThrWeak_efficiency",
+        "GraphThrWeak_modularity",
+        "GraphThrWeak_local_efficiency",
+        "GraphThrWeak_avg_clustering",
         "GraphGap_efficiency",
         "GraphGap_modularity",
         "GraphGap_local_efficiency",
@@ -509,9 +593,47 @@ if __name__ == "__main__":
     image_paths["Effective Dim (PR)"] = plot_group_metric(master_df, "Effective_Dim_PR", "Dimension", "Effective Dimension (PR)", stat_results.get("Effective_Dim_PR", {}), "group_effdim_pr.png")
     image_paths["Effective Dim (eRank)"] = plot_group_metric(master_df, "Effective_Dim_eRank", "Dimension", "Effective Dimension (eRank)", stat_results.get("Effective_Dim_eRank", {}), "group_effdim_erank.png")
 
+    # Strong/Weak graph metrics: condition-wise significance within each graph type
+    for gm in GRAPH_METRICS:
+        image_paths[f"Graph Strong (rank) - {gm}"] = plot_group_metric(
+            master_df,
+            f"GraphStrong_{gm}",
+            gm,
+            f"Strong Graph (rank) by Condition: {gm}",
+            stat_results.get(f"GraphStrong_{gm}", {}),
+            f"group_graph_strong_only_{gm}.png",
+        )
+        image_paths[f"Graph Weak (rank) - {gm}"] = plot_group_metric(
+            master_df,
+            f"GraphWeak_{gm}",
+            gm,
+            f"Weak Graph (rank) by Condition: {gm}",
+            stat_results.get(f"GraphWeak_{gm}", {}),
+            f"group_graph_weak_only_{gm}.png",
+        )
+
+        image_paths[f"Graph Strong (threshold) - {gm}"] = plot_group_metric(
+            master_df,
+            f"GraphThrStrong_{gm}",
+            gm,
+            f"Strong Graph (threshold) by Condition: {gm}",
+            stat_results.get(f"GraphThrStrong_{gm}", {}),
+            f"group_graph_thr_strong_only_{gm}.png",
+        )
+        image_paths[f"Graph Weak (threshold) - {gm}"] = plot_group_metric(
+            master_df,
+            f"GraphThrWeak_{gm}",
+            gm,
+            f"Weak Graph (threshold) by Condition: {gm}",
+            stat_results.get(f"GraphThrWeak_{gm}", {}),
+            f"group_graph_thr_weak_only_{gm}.png",
+        )
+
     image_paths["Decile Correlation Curve"] = plot_decile_curve(decile_df)
     for gm in GRAPH_METRICS:
         image_paths[f"Graph Strong vs Weak - {gm}"] = plot_graph_sw_comparison(graph_long_df, gm)
+    for gm in GRAPH_METRICS:
+        image_paths[f"Graph Threshold Strong vs Weak - {gm}"] = plot_graph_sw_comparison(graph_thr_long_df, gm)
 
     generate_group_markdown(master_df, stat_results, image_paths, rr_overlap_df)
     print("====== Group integration completed ======")
