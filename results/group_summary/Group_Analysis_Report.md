@@ -16,44 +16,44 @@
 
 | Metric | Main Effect | Div vs Con | Div vs Rand | Con vs Rand |
 | :--- | :--- | :--- | :--- | :--- |
-| **Entropy** | Friedman chi2=3.250, p=1.9691e-01 | p=0.3125 (ns) | p=0.1094 (ns) | p=0.5469 (ns) |
-| **Mean_RSM_Sim** | Friedman chi2=7.000, p=3.0197e-02 | p=0.1953 (ns) | p=0.0156 (*) | p=0.0234 (*) |
-| **Mean_Correlation** | Friedman chi2=3.250, p=1.9691e-01 | p=0.3125 (ns) | p=0.3828 (ns) | p=0.3125 (ns) |
-| **Strong_Correlation** | Friedman chi2=0.750, p=6.8729e-01 | p=0.5469 (ns) | p=0.6406 (ns) | p=0.5469 (ns) |
-| **Weak_Correlation** | Friedman chi2=7.000, p=3.0197e-02 | p=1.0000 (ns) | p=0.0156 (*) | p=0.0234 (*) |
-| **Strong_Weak_Gap** | Friedman chi2=6.250, p=4.3937e-02 | p=0.7422 (ns) | p=0.0391 (*) | p=0.0547 (ns) |
-| **Participants_Ratio** | Friedman chi2=9.250, p=9.8037e-03 | p=0.6406 (ns) | p=0.0078 (**) | p=0.0156 (*) |
-| **Gini_Mean** | Friedman chi2=5.250, p=7.2440e-02 | p=0.6406 (ns) | p=0.1953 (ns) | p=0.0781 (ns) |
-| **PR_Mean** | Friedman chi2=3.250, p=1.9691e-01 | p=0.9453 (ns) | p=0.1484 (ns) | p=0.2500 (ns) |
-| **PR_Norm_Mean** | Friedman chi2=3.250, p=1.9691e-01 | p=0.9453 (ns) | p=0.1953 (ns) | p=0.3125 (ns) |
-| **Effective_Dim_PR** | Friedman chi2=0.250, p=8.8250e-01 | p=1.0000 (ns) | p=0.3828 (ns) | p=0.6406 (ns) |
-| **Effective_Dim_eRank** | Friedman chi2=0.750, p=6.8729e-01 | p=0.7422 (ns) | p=0.4609 (ns) | p=0.4609 (ns) |
-| **Effective_Dim_90Var** | Friedman chi2=2.667, p=2.6360e-01 | p=0.2500 (ns) | p=0.7500 (ns) | p=0.2500 (ns) |
-| **Sig_Mean_Corr** | N too small for stable test | p=nan (ns) | p=nan (ns) | p=nan (ns) |
-| **Noise_Mean_Corr** | N too small for stable test | p=nan (ns) | p=nan (ns) | p=nan (ns) |
-| **SigAbs_Mean_Corr** | N too small for stable test | p=nan (ns) | p=nan (ns) | p=nan (ns) |
-| **NoiseAbs_Mean_Corr** | N too small for stable test | p=nan (ns) | p=nan (ns) | p=nan (ns) |
-| **SigNoise_Coupling_r** | N too small for stable test | p=nan (ns) | p=nan (ns) | p=nan (ns) |
-| **GraphStrong_efficiency** | Friedman chi2=1.750, p=4.1686e-01 | p=0.9453 (ns) | p=0.1094 (ns) | p=0.4609 (ns) |
-| **GraphStrong_modularity** | Friedman chi2=0.250, p=8.8250e-01 | p=0.7422 (ns) | p=0.6406 (ns) | p=0.6406 (ns) |
-| **GraphStrong_local_efficiency** | Friedman chi2=3.250, p=1.9691e-01 | p=0.5469 (ns) | p=0.1484 (ns) | p=0.1094 (ns) |
-| **GraphStrong_avg_clustering** | Friedman chi2=1.750, p=4.1686e-01 | p=0.7422 (ns) | p=0.2500 (ns) | p=0.1484 (ns) |
-| **GraphWeak_efficiency** | Friedman chi2=4.000, p=1.3534e-01 | p=0.4609 (ns) | p=0.0781 (ns) | p=0.3828 (ns) |
-| **GraphWeak_modularity** | Friedman chi2=4.000, p=1.3534e-01 | p=0.4609 (ns) | p=0.4609 (ns) | p=0.0234 (*) |
-| **GraphWeak_local_efficiency** | Friedman chi2=0.250, p=8.8250e-01 | p=0.7422 (ns) | p=0.6406 (ns) | p=0.8438 (ns) |
-| **GraphWeak_avg_clustering** | Friedman chi2=0.250, p=8.8250e-01 | p=0.8438 (ns) | p=0.3828 (ns) | p=0.9453 (ns) |
-| **GraphThrStrong_efficiency** | Friedman chi2=1.750, p=4.1686e-01 | p=0.7422 (ns) | p=0.9453 (ns) | p=0.5469 (ns) |
-| **GraphThrStrong_modularity** | Friedman chi2=3.000, p=2.2313e-01 | p=0.6406 (ns) | p=0.3125 (ns) | p=0.4609 (ns) |
-| **GraphThrStrong_local_efficiency** | Friedman chi2=5.250, p=7.2440e-02 | p=0.5469 (ns) | p=0.0781 (ns) | p=0.0547 (ns) |
-| **GraphThrStrong_avg_clustering** | Friedman chi2=3.250, p=1.9691e-01 | p=0.7422 (ns) | p=0.0547 (ns) | p=0.0391 (*) |
-| **GraphThrWeak_efficiency** | Friedman chi2=6.750, p=3.4218e-02 | p=0.9453 (ns) | p=0.0156 (*) | p=0.0156 (*) |
-| **GraphThrWeak_modularity** | Friedman chi2=9.250, p=9.8037e-03 | p=0.8438 (ns) | p=0.0078 (**) | p=0.0156 (*) |
-| **GraphThrWeak_local_efficiency** | Friedman chi2=7.000, p=3.0197e-02 | p=0.3828 (ns) | p=0.0078 (**) | p=0.0391 (*) |
-| **GraphThrWeak_avg_clustering** | Friedman chi2=7.000, p=3.0197e-02 | p=1.0000 (ns) | p=0.0078 (**) | p=0.0391 (*) |
-| **GraphGap_efficiency** | Friedman chi2=5.250, p=7.2440e-02 | p=0.4609 (ns) | p=0.0391 (*) | p=0.2500 (ns) |
-| **GraphGap_modularity** | Friedman chi2=0.750, p=6.8729e-01 | p=0.7422 (ns) | p=1.0000 (ns) | p=0.8438 (ns) |
-| **GraphGap_local_efficiency** | Friedman chi2=0.250, p=8.8250e-01 | p=0.6406 (ns) | p=0.1953 (ns) | p=0.7422 (ns) |
-| **GraphGap_avg_clustering** | Friedman chi2=0.250, p=8.8250e-01 | p=0.9453 (ns) | p=0.1953 (ns) | p=0.9453 (ns) |
+| **Entropy** | Friedman $\chi^2$=3.25, $p$=1.969e-01 | p=0.3125 (ns) | p=0.1094 (ns) | p=0.5469 (ns) |
+| **Mean_RSM_Sim** | Friedman $\chi^2$=7.00, $p$=3.020e-02 | p=0.1953 (ns) | p=0.0156 (*) | p=0.0234 (*) |
+| **Mean_Correlation** | Friedman $\chi^2$=3.25, $p$=1.969e-01 | p=0.3125 (ns) | p=0.3828 (ns) | p=0.3125 (ns) |
+| **Strong_Correlation** | Friedman $\chi^2$=0.75, $p$=6.873e-01 | p=0.5469 (ns) | p=0.6406 (ns) | p=0.5469 (ns) |
+| **Weak_Correlation** | Friedman $\chi^2$=7.00, $p$=3.020e-02 | p=1.0000 (ns) | p=0.0156 (*) | p=0.0234 (*) |
+| **Strong_Weak_Gap** | Friedman $\chi^2$=6.25, $p$=4.394e-02 | p=0.7422 (ns) | p=0.0391 (*) | p=0.0547 (ns) |
+| **Participants_Ratio** | Friedman $\chi^2$=9.25, $p$=9.804e-03 | p=0.6406 (ns) | p=0.0078 (**) | p=0.0156 (*) |
+| **Gini_Mean** | Friedman $\chi^2$=5.25, $p$=7.244e-02 | p=0.6406 (ns) | p=0.1953 (ns) | p=0.0781 (ns) |
+| **PR_Mean** | Friedman $\chi^2$=3.25, $p$=1.969e-01 | p=0.9453 (ns) | p=0.1484 (ns) | p=0.2500 (ns) |
+| **PR_Norm_Mean** | Friedman $\chi^2$=3.25, $p$=1.969e-01 | p=0.9453 (ns) | p=0.1953 (ns) | p=0.3125 (ns) |
+| **Effective_Dim_PR** | Friedman $\chi^2$=0.25, $p$=8.825e-01 | p=1.0000 (ns) | p=0.3828 (ns) | p=0.6406 (ns) |
+| **Effective_Dim_eRank** | Friedman $\chi^2$=0.75, $p$=6.873e-01 | p=0.7422 (ns) | p=0.4609 (ns) | p=0.4609 (ns) |
+| **Effective_Dim_90Var** | Friedman $\chi^2$=2.67, $p$=2.636e-01 | p=0.2500 (ns) | p=0.7500 (ns) | p=0.2500 (ns) |
+| **Sig_Mean_Corr** | N too small | p=nan (ns) | p=nan (ns) | p=nan (ns) |
+| **Noise_Mean_Corr** | N too small | p=nan (ns) | p=nan (ns) | p=nan (ns) |
+| **SigAbs_Mean_Corr** | N too small | p=nan (ns) | p=nan (ns) | p=nan (ns) |
+| **NoiseAbs_Mean_Corr** | N too small | p=nan (ns) | p=nan (ns) | p=nan (ns) |
+| **SigNoise_Coupling_r** | N too small | p=nan (ns) | p=nan (ns) | p=nan (ns) |
+| **GraphStrong_efficiency** | Friedman $\chi^2$=1.75, $p$=4.169e-01 | p=0.9453 (ns) | p=0.1094 (ns) | p=0.4609 (ns) |
+| **GraphStrong_modularity** | Friedman $\chi^2$=0.25, $p$=8.825e-01 | p=0.7422 (ns) | p=0.6406 (ns) | p=0.6406 (ns) |
+| **GraphStrong_local_efficiency** | Friedman $\chi^2$=3.25, $p$=1.969e-01 | p=0.5469 (ns) | p=0.1484 (ns) | p=0.1094 (ns) |
+| **GraphStrong_avg_clustering** | Friedman $\chi^2$=1.75, $p$=4.169e-01 | p=0.7422 (ns) | p=0.2500 (ns) | p=0.1484 (ns) |
+| **GraphWeak_efficiency** | Friedman $\chi^2$=4.00, $p$=1.353e-01 | p=0.4609 (ns) | p=0.0781 (ns) | p=0.3828 (ns) |
+| **GraphWeak_modularity** | Friedman $\chi^2$=4.00, $p$=1.353e-01 | p=0.4609 (ns) | p=0.4609 (ns) | p=0.0234 (*) |
+| **GraphWeak_local_efficiency** | Friedman $\chi^2$=0.25, $p$=8.825e-01 | p=0.7422 (ns) | p=0.6406 (ns) | p=0.8438 (ns) |
+| **GraphWeak_avg_clustering** | Friedman $\chi^2$=0.25, $p$=8.825e-01 | p=0.8438 (ns) | p=0.3828 (ns) | p=0.9453 (ns) |
+| **GraphThrStrong_efficiency** | Friedman $\chi^2$=1.75, $p$=4.169e-01 | p=0.7422 (ns) | p=0.9453 (ns) | p=0.5469 (ns) |
+| **GraphThrStrong_modularity** | Friedman $\chi^2$=3.00, $p$=2.231e-01 | p=0.6406 (ns) | p=0.3125 (ns) | p=0.4609 (ns) |
+| **GraphThrStrong_local_efficiency** | Friedman $\chi^2$=5.25, $p$=7.244e-02 | p=0.5469 (ns) | p=0.0781 (ns) | p=0.0547 (ns) |
+| **GraphThrStrong_avg_clustering** | Friedman $\chi^2$=3.25, $p$=1.969e-01 | p=0.7422 (ns) | p=0.0547 (ns) | p=0.0391 (*) |
+| **GraphThrWeak_efficiency** | Friedman $\chi^2$=6.75, $p$=3.422e-02 | p=0.9453 (ns) | p=0.0156 (*) | p=0.0156 (*) |
+| **GraphThrWeak_modularity** | Friedman $\chi^2$=9.25, $p$=9.804e-03 | p=0.8438 (ns) | p=0.0078 (**) | p=0.0156 (*) |
+| **GraphThrWeak_local_efficiency** | Friedman $\chi^2$=7.00, $p$=3.020e-02 | p=0.3828 (ns) | p=0.0078 (**) | p=0.0391 (*) |
+| **GraphThrWeak_avg_clustering** | Friedman $\chi^2$=7.00, $p$=3.020e-02 | p=1.0000 (ns) | p=0.0078 (**) | p=0.0391 (*) |
+| **GraphGap_efficiency** | Friedman $\chi^2$=5.25, $p$=7.244e-02 | p=0.4609 (ns) | p=0.0391 (*) | p=0.2500 (ns) |
+| **GraphGap_modularity** | Friedman $\chi^2$=0.75, $p$=6.873e-01 | p=0.7422 (ns) | p=1.0000 (ns) | p=0.8438 (ns) |
+| **GraphGap_local_efficiency** | Friedman $\chi^2$=0.25, $p$=8.825e-01 | p=0.6406 (ns) | p=0.1953 (ns) | p=0.7422 (ns) |
+| **GraphGap_avg_clustering** | Friedman $\chi^2$=0.25, $p$=8.825e-01 | p=0.9453 (ns) | p=0.1953 (ns) | p=0.9453 (ns) |
 
 ## 3. RR Overlap Summary Across Mice
 
@@ -70,101 +70,35 @@
 
 ## 4. Figures
 
-### Entropy
-![Entropy](./group_entropy.png)
+### Representation Entropy
+![Representation Entropy](./group_entropy.png)
 
 ### RSM Mean Similarity
-![RSM Mean Similarity](./group_rsm_mean.png)
+![RSM Mean Similarity](./group_mean_rsm_sim.png)
 
-### Mean Correlation
-![Mean Correlation](./group_mean_corr.png)
+### Mean Pairwise Correlation
+![Mean Pairwise Correlation](./group_mean_correlation.png)
 
-### Strong Correlation (Top 10%)
-![Strong Correlation (Top 10%)](./group_strong_corr.png)
+### Strong Connections (Top 10%)
+![Strong Connections (Top 10%)](./group_strong_correlation.png)
 
-### Weak Correlation (Bottom 10%)
-![Weak Correlation (Bottom 10%)](./group_weak_corr.png)
+### Weak Connections (Bottom 10%)
+![Weak Connections (Bottom 10%)](./group_weak_correlation.png)
 
-### Strong-Weak Gap
-![Strong-Weak Gap](./group_corr_gap.png)
+### Strong-Weak Correlation Gap
+![Strong-Weak Correlation Gap](./group_strong_weak_gap.png)
 
 ### RR Participants Ratio
-![RR Participants Ratio](./group_participants.png)
+![RR Participants Ratio](./group_participants_ratio.png)
 
-### Gini (Mean)
-![Gini (Mean)](./group_gini_mean.png)
+### Response Gini (Mean)
+![Response Gini (Mean)](./group_gini_mean.png)
 
 ### Participation Ratio (Mean)
 ![Participation Ratio (Mean)](./group_pr_mean.png)
 
-### Effective Dim (PR)
-![Effective Dim (PR)](./group_effdim_pr.png)
-
-### Effective Dim (eRank)
-![Effective Dim (eRank)](./group_effdim_erank.png)
-
-### Signal Corr (Mean)
-![Signal Corr (Mean)](./group_signal_corr_mean.png)
-
-### Noise Corr (Mean)
-![Noise Corr (Mean)](./group_noise_corr_mean.png)
-
-### Signal Corr |r| (Mean)
-![Signal Corr |r| (Mean)](./group_signal_corr_abs_mean.png)
-
-### Noise Corr |r| (Mean)
-![Noise Corr |r| (Mean)](./group_noise_corr_abs_mean.png)
-
-### Signal-Noise Coupling r
-![Signal-Noise Coupling r](./group_sig_noise_coupling_r.png)
-
-### Graph Strong (rank) - efficiency
-![Graph Strong (rank) - efficiency](./group_graph_strong_only_efficiency.png)
-
-### Graph Weak (rank) - efficiency
-![Graph Weak (rank) - efficiency](./group_graph_weak_only_efficiency.png)
-
-### Graph Strong (threshold) - efficiency
-![Graph Strong (threshold) - efficiency](./group_graph_thr_strong_only_efficiency.png)
-
-### Graph Weak (threshold) - efficiency
-![Graph Weak (threshold) - efficiency](./group_graph_thr_weak_only_efficiency.png)
-
-### Graph Strong (rank) - modularity
-![Graph Strong (rank) - modularity](./group_graph_strong_only_modularity.png)
-
-### Graph Weak (rank) - modularity
-![Graph Weak (rank) - modularity](./group_graph_weak_only_modularity.png)
-
-### Graph Strong (threshold) - modularity
-![Graph Strong (threshold) - modularity](./group_graph_thr_strong_only_modularity.png)
-
-### Graph Weak (threshold) - modularity
-![Graph Weak (threshold) - modularity](./group_graph_thr_weak_only_modularity.png)
-
-### Graph Strong (rank) - local_efficiency
-![Graph Strong (rank) - local_efficiency](./group_graph_strong_only_local_efficiency.png)
-
-### Graph Weak (rank) - local_efficiency
-![Graph Weak (rank) - local_efficiency](./group_graph_weak_only_local_efficiency.png)
-
-### Graph Strong (threshold) - local_efficiency
-![Graph Strong (threshold) - local_efficiency](./group_graph_thr_strong_only_local_efficiency.png)
-
-### Graph Weak (threshold) - local_efficiency
-![Graph Weak (threshold) - local_efficiency](./group_graph_thr_weak_only_local_efficiency.png)
-
-### Graph Strong (rank) - avg_clustering
-![Graph Strong (rank) - avg_clustering](./group_graph_strong_only_avg_clustering.png)
-
-### Graph Weak (rank) - avg_clustering
-![Graph Weak (rank) - avg_clustering](./group_graph_weak_only_avg_clustering.png)
-
-### Graph Strong (threshold) - avg_clustering
-![Graph Strong (threshold) - avg_clustering](./group_graph_thr_strong_only_avg_clustering.png)
-
-### Graph Weak (threshold) - avg_clustering
-![Graph Weak (threshold) - avg_clustering](./group_graph_thr_weak_only_avg_clustering.png)
+### Effective Dimension (PR)
+![Effective Dimension (PR)](./group_effective_dim_pr.png)
 
 ### Decile Correlation Curve
 ![Decile Correlation Curve](./group_corr_decile_curve.png)
@@ -186,16 +120,4 @@
 
 ### Graph Strong vs Weak - avg_clustering
 ![Graph Strong vs Weak - avg_clustering](./group_graph_sw_avg_clustering.png)
-
-### Graph Threshold Strong vs Weak - efficiency
-![Graph Threshold Strong vs Weak - efficiency](./group_graph_sw_efficiency.png)
-
-### Graph Threshold Strong vs Weak - modularity
-![Graph Threshold Strong vs Weak - modularity](./group_graph_sw_modularity.png)
-
-### Graph Threshold Strong vs Weak - local_efficiency
-![Graph Threshold Strong vs Weak - local_efficiency](./group_graph_sw_local_efficiency.png)
-
-### Graph Threshold Strong vs Weak - avg_clustering
-![Graph Threshold Strong vs Weak - avg_clustering](./group_graph_sw_avg_clustering.png)
 
