@@ -55,7 +55,7 @@ data_paths = ["M21_1107", "M71_1024", "M73_1128", "M77_1031", "M77_1107", "M78_1
 for idx, path in enumerate(data_paths):
     data_path = base_dir + data_paths[idx] # 'M77_1031'
     print(f"Processing data from: {data_path}")
-    save_dir = "./results/" + data_paths[idx] 
+    save_dir = "../results/" + data_paths[idx] 
 
     data_out_dir = os.path.join(save_dir, "data")
     fig_out_dir = os.path.join(save_dir, "figures")
@@ -1233,6 +1233,298 @@ for idx, path in enumerate(data_paths):
     fig2.tight_layout()
     fig2.savefig(os.path.join(fig_out_dir, "pairwise_correlation_deciles_line.png"), dpi=300, bbox_inches="tight")
     plt.show()
+
+    # Figure 3: condition-wise stratified correlation change relative to the weakest decile
+    df_corr_deciles_delta = df_corr_deciles.sort_values(["Class_ID", "Decile_Index"]).copy()
+    df_corr_deciles_delta["Delta_vs_Decile1"] = df_corr_deciles_delta.groupby("Class_ID")["Mean_Correlation"].transform(lambda s: s - s.iloc[0])
+
+    fig3, ax3 = plt.subplots(figsize=(8.5, 4.8), dpi=180)
+    for cls in sorted(df_corr_deciles_delta["Class_ID"].unique()):
+        sub = df_corr_deciles_delta[df_corr_deciles_delta["Class_ID"] == cls].sort_values("Decile_Index")
+        ax3.plot(
+            sub["Decile_Index"],
+            sub["Delta_vs_Decile1"],
+            marker="o",
+            lw=2,
+            color=class_colors.get(cls, None),
+            label=label_names.get(cls, str(cls)),
+        )
+
+    ax3.set_xticks(np.arange(1, 11))
+    ax3.set_xticklabels([f"{(i-1)*10}-{i*10}%" for i in range(1, 11)], rotation=30, ha="right")
+    ax3.set_xlabel("Connection-strength decile (low to high)")
+    ax3.set_ylabel("Delta correlation (vs decile 1)")
+    ax3.set_title("Decile-wise Correlation Change by Condition")
+    ax3.grid(axis="y", linestyle="--", alpha=0.3)
+    ax3.legend(frameon=False, ncol=2)
+    ax3.spines["top"].set_visible(False)
+    ax3.spines["right"].set_visible(False)
+    fig3.tight_layout()
+    fig3.savefig(os.path.join(fig_out_dir, "pairwise_correlation_deciles_delta.png"), dpi=300, bbox_inches="tight")
+    plt.show()
+
+
+
+    # %% [markdown]
+    # ## 9.1 Signal vs Noise Correlation Coupling
+    # 
+    # Following standard definitions in Cohen & Kohn (2011, Nat Neurosci) and Averbeck et al. (2006, Nat Rev Neurosci), this section computes condition-wise signal/noise correlations and their coupling.
+    # 
+
+    # %%
+
+    import numpy as np
+    import pandas as pd
+    import seaborn as sns
+    import matplotlib.pyplot as plt
+
+
+    # Literature-aligned definitions:
+    # 1) Signal correlation: correlation between mean response features of neuron pairs.
+    # 2) Noise correlation: correlation of trial-by-trial residual fluctuations under the same condition.
+    # References: Cohen & Kohn (2011); Averbeck et al. (2006).
+
+
+    def upper_triangle_values_local(matrix):
+        mask = np.triu(np.ones_like(matrix, dtype=bool), k=1)
+        return matrix[mask]
+
+
+    def robust_corrcoef(X, rowvar=False):
+        """Safe Pearson correlation matrix with NaN handling."""
+        X = np.asarray(X, dtype=float)
+        if X.ndim != 2:
+            raise ValueError("X must be 2D")
+        if (rowvar and X.shape[1] < 2) or ((not rowvar) and X.shape[0] < 2):
+            n = X.shape[0] if rowvar else X.shape[1]
+            out = np.full((n, n), np.nan)
+            np.fill_diagonal(out, 1.0)
+            return out
+
+        C = np.corrcoef(X, rowvar=rowvar)
+        C = np.nan_to_num(C, nan=0.0, posinf=0.0, neginf=0.0)
+        np.fill_diagonal(C, 1.0)
+        return C
+
+
+    # Use spike segments: shape (n_trials, n_neurons, n_time)
+    X_trials = np.asarray(segments_spi, dtype=float)
+    y_trials = np.asarray(labels_spi)
+    classes = sorted(np.unique(y_trials).astype(int).tolist())
+
+    # Noise-correlation window (same response window used elsewhere)
+    noise_window = slice(10, 13)
+
+    signal_corr_by_class = {}
+    noise_corr_by_class = {}
+    pair_rows = []
+    summary_rows = []
+
+    for cls in classes:
+        trials_c = X_trials[y_trials == cls]
+        if trials_c.shape[0] < 3:
+            print(f"[!] Skip class {cls}: too few trials for noise correlation")
+            continue
+
+        # Condition-specific signal features:
+        # each neuron's mean temporal response curve under this condition
+        mean_time_profile = np.nanmean(trials_c, axis=0)  # (n_neurons, n_time)
+        sig_corr = robust_corrcoef(mean_time_profile, rowvar=True)
+
+        # Condition-specific noise features:
+        # trial-wise scalar response residuals (same stimulus context)
+        trial_resp = np.nanmean(trials_c[:, :, noise_window], axis=2)  # (n_trials, n_neurons)
+        residual = trial_resp - np.nanmean(trial_resp, axis=0, keepdims=True)
+        noi_corr = robust_corrcoef(residual, rowvar=False)
+
+        signal_corr_by_class[cls] = sig_corr
+        noise_corr_by_class[cls] = noi_corr
+
+        sig_vals = upper_triangle_values_local(sig_corr)
+        noi_vals = upper_triangle_values_local(noi_corr)
+
+        # Pairwise table for coupling scatter
+        n_pairs = min(sig_vals.size, noi_vals.size)
+        class_name = label_names.get(cls, str(cls)) if 'label_names' in globals() else str(cls)
+        for k in range(n_pairs):
+            pair_rows.append({
+                'Class_ID': cls,
+                'Class_Name': class_name,
+                'Signal_Corr': float(sig_vals[k]),
+                'Noise_Corr': float(noi_vals[k]),
+                'Abs_Signal_Corr': float(abs(sig_vals[k])),
+                'Abs_Noise_Corr': float(abs(noi_vals[k])),
+            })
+
+        summary_rows.append({
+            'Class_ID': cls,
+            'Class_Name': class_name,
+            'Mean_Signal_Corr': float(np.mean(sig_vals)),
+            'Mean_Noise_Corr': float(np.mean(noi_vals)),
+            'Mean_Abs_Signal_Corr': float(np.mean(np.abs(sig_vals))),
+            'Mean_Abs_Noise_Corr': float(np.mean(np.abs(noi_vals))),
+            'Signal_Noise_Coupling_r': float(np.corrcoef(sig_vals, noi_vals)[0, 1]) if sig_vals.size > 1 else np.nan,
+        })
+
+
+    df_sig_noise_pairs = pd.DataFrame(pair_rows)
+    df_sig_noise_strength = pd.DataFrame(summary_rows)
+
+    pair_csv = os.path.join(data_out_dir, 'sig_noise_pair_values_by_condition.csv')
+    summary_csv = os.path.join(data_out_dir, 'sig_noise_strength_summary_by_condition.csv')
+    df_sig_noise_pairs.to_csv(pair_csv, index=False)
+    df_sig_noise_strength.to_csv(summary_csv, index=False)
+    print(f"[*] Signal-noise pair table saved to: {pair_csv}")
+    print(f"[*] Signal-noise summary saved to: {summary_csv}")
+
+    # 1) Condition-wise coupling scatter: signal vs noise
+    n_cls = len(df_sig_noise_pairs['Class_ID'].unique())
+    fig, axes = plt.subplots(1, n_cls, figsize=(5.2 * n_cls, 4.6), dpi=180, sharex=True, sharey=True)
+    if n_cls == 1:
+        axes = [axes]
+
+    for ax, cls in zip(axes, sorted(df_sig_noise_pairs['Class_ID'].unique())):
+        sub = df_sig_noise_pairs[df_sig_noise_pairs['Class_ID'] == cls]
+        cname = sub['Class_Name'].iloc[0]
+        sns.regplot(
+            data=sub,
+            x='Signal_Corr',
+            y='Noise_Corr',
+            scatter_kws={'s': 10, 'alpha': 0.25, 'color': class_colors.get(cls, '#1F77B4')},
+            line_kws={'color': '#222222', 'lw': 2},
+            ax=ax,
+        )
+        r_val = np.corrcoef(sub['Signal_Corr'], sub['Noise_Corr'])[0, 1] if len(sub) > 1 else np.nan
+        ax.set_title(f"{cname}\nr={r_val:.3f}")
+        ax.set_xlabel('Signal correlation')
+        ax.set_ylabel('Noise correlation')
+        ax.grid(alpha=0.2, linestyle='--')
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+
+    fig.suptitle('Signal-Noise Correlation Coupling by Condition', y=1.02)
+    fig.tight_layout()
+    fig.savefig(os.path.join(fig_out_dir, 'signal_noise_coupling_scatter_by_condition.png'), dpi=300, bbox_inches='tight')
+    plt.show()
+
+    # 2) Compare signal/noise strengths across conditions
+    fig2, axes2 = plt.subplots(1, 2, figsize=(12, 4.8), dpi=180)
+
+    plot_df_raw = df_sig_noise_strength.melt(
+        id_vars=['Class_ID', 'Class_Name'],
+        value_vars=['Mean_Signal_Corr', 'Mean_Noise_Corr'],
+        var_name='Metric',
+        value_name='Value',
+    )
+    plot_df_raw['Metric'] = plot_df_raw['Metric'].map({'Mean_Signal_Corr': 'Signal', 'Mean_Noise_Corr': 'Noise'})
+
+    sns.barplot(data=plot_df_raw, x='Class_Name', y='Value', hue='Metric', ax=axes2[0])
+    axes2[0].set_title('Condition-wise Mean Signal/Noise Correlation')
+    axes2[0].set_xlabel('Condition')
+    axes2[0].set_ylabel('Mean correlation')
+    axes2[0].grid(axis='y', linestyle='--', alpha=0.3)
+    axes2[0].spines['top'].set_visible(False)
+    axes2[0].spines['right'].set_visible(False)
+
+    plot_df_abs = df_sig_noise_strength.melt(
+        id_vars=['Class_ID', 'Class_Name'],
+        value_vars=['Mean_Abs_Signal_Corr', 'Mean_Abs_Noise_Corr'],
+        var_name='Metric',
+        value_name='Value',
+    )
+    plot_df_abs['Metric'] = plot_df_abs['Metric'].map({'Mean_Abs_Signal_Corr': 'Signal |r|', 'Mean_Abs_Noise_Corr': 'Noise |r|'})
+
+    sns.barplot(data=plot_df_abs, x='Class_Name', y='Value', hue='Metric', ax=axes2[1])
+    axes2[1].set_title('Condition-wise Signal/Noise Strength (|r|)')
+    axes2[1].set_xlabel('Condition')
+    axes2[1].set_ylabel('Mean |correlation|')
+    axes2[1].grid(axis='y', linestyle='--', alpha=0.3)
+    axes2[1].spines['top'].set_visible(False)
+    axes2[1].spines['right'].set_visible(False)
+
+    fig2.tight_layout()
+    fig2.savefig(os.path.join(fig_out_dir, 'signal_noise_strength_by_condition.png'), dpi=300, bbox_inches='tight')
+    plt.show()
+
+    # 3) Couple condition-wise noise-correlation change with existing decile stratification
+    noise_decile_rows = []
+    for cls, Cn in noise_corr_by_class.items():
+        vals = np.sort(upper_triangle_values_local(Cn))
+        bins = np.array_split(vals, 10)
+        for i, b in enumerate(bins, start=1):
+            noise_decile_rows.append({
+                'Class_ID': cls,
+                'Class_Name': label_names.get(cls, str(cls)) if 'label_names' in globals() else str(cls),
+                'Decile_Index': i,
+                'Noise_Mean_Corr': float(np.mean(b)) if b.size > 0 else np.nan,
+            })
+
+    df_noise_deciles = pd.DataFrame(noise_decile_rows)
+
+    # Merge with existing decile table from section 9
+    df_decile_coupling = pd.merge(
+        df_corr_deciles[['Class_ID', 'Class_Name', 'Decile_Index', 'Mean_Correlation']],
+        df_noise_deciles,
+        on=['Class_ID', 'Class_Name', 'Decile_Index'],
+        how='inner',
+    )
+
+    # Add delta relative to decile1
+    df_decile_coupling = df_decile_coupling.sort_values(['Class_ID', 'Decile_Index']).copy()
+    df_decile_coupling['Corr_Delta_vs_D1'] = df_decile_coupling.groupby('Class_ID')['Mean_Correlation'].transform(lambda s: s - s.iloc[0])
+    df_decile_coupling['Noise_Delta_vs_D1'] = df_decile_coupling.groupby('Class_ID')['Noise_Mean_Corr'].transform(lambda s: s - s.iloc[0])
+
+    coupling_csv = os.path.join(data_out_dir, 'noise_corr_decile_coupling.csv')
+    df_decile_coupling.to_csv(coupling_csv, index=False)
+    print(f"[*] Noise-decile coupling table saved to: {coupling_csv}")
+
+    fig3, axes3 = plt.subplots(1, 2, figsize=(12.5, 4.8), dpi=180)
+
+    for cls in sorted(df_decile_coupling['Class_ID'].unique()):
+        sub = df_decile_coupling[df_decile_coupling['Class_ID'] == cls].sort_values('Decile_Index')
+        axes3[0].plot(
+            sub['Decile_Index'],
+            sub['Noise_Mean_Corr'],
+            marker='o',
+            lw=2,
+            color=class_colors.get(cls, None),
+            label=label_names.get(cls, str(cls)) if 'label_names' in globals() else str(cls),
+        )
+
+    axes3[0].set_xticks(np.arange(1, 11))
+    axes3[0].set_title('Noise Correlation Decile Curve by Condition')
+    axes3[0].set_xlabel('Decile')
+    axes3[0].set_ylabel('Noise mean correlation')
+    axes3[0].grid(axis='y', linestyle='--', alpha=0.3)
+    axes3[0].legend(frameon=False, ncol=2)
+    axes3[0].spines['top'].set_visible(False)
+    axes3[0].spines['right'].set_visible(False)
+
+    for cls in sorted(df_decile_coupling['Class_ID'].unique()):
+        sub = df_decile_coupling[df_decile_coupling['Class_ID'] == cls].sort_values('Decile_Index')
+        axes3[1].plot(
+            sub['Corr_Delta_vs_D1'],
+            sub['Noise_Delta_vs_D1'],
+            marker='o',
+            lw=2,
+            color=class_colors.get(cls, None),
+            label=label_names.get(cls, str(cls)) if 'label_names' in globals() else str(cls),
+        )
+
+    axes3[1].axhline(0, color='#999999', lw=1, ls='--')
+    axes3[1].axvline(0, color='#999999', lw=1, ls='--')
+    axes3[1].set_title('Coupling: Corr-decile change vs Noise-decile change')
+    axes3[1].set_xlabel('Total correlation delta vs decile1')
+    axes3[1].set_ylabel('Noise correlation delta vs decile1')
+    axes3[1].grid(axis='both', linestyle='--', alpha=0.3)
+    axes3[1].legend(frameon=False, ncol=1)
+    axes3[1].spines['top'].set_visible(False)
+    axes3[1].spines['right'].set_visible(False)
+
+    fig3.tight_layout()
+    fig3.savefig(os.path.join(fig_out_dir, 'noise_corr_deciles_and_coupling.png'), dpi=300, bbox_inches='tight')
+    plt.show()
+
 
 
 
