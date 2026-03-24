@@ -1,0 +1,2 @@
+window_start,window_end,n_trials,n_neurons,n_splits,accuracy_mean,accuracy_std,shuffle_accuracy_mean,shuffle_accuracy_std,accuracy_minus_shuffle,recall_Divergent,recall_Convergent,recall_Random
+31,34,180,748,3,0.6555555555555556,0.048112522432468836,0.34138888888888885,0.043924126645286006,0.3141666666666667,0.6290322580645161,0.7142857142857143,0.6181818181818182

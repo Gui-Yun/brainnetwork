@@ -1,18 +1,18 @@
 {
     "mouse_id": "M73_1128",
-    "timestamp": "2026-03-24 15:55:43",
+    "timestamp": "2026-03-24 16:14:10",
     "entropy_metrics": [
         {
             "Stimulus": "Divergent",
-            "Entropy": 3.6670168669281207,
-            "Mean_Sim": 0.5142567418177495,
-            "Std_Sim": 0.12616305938820416
+            "Entropy": 3.59101478694203,
+            "Mean_Sim": 0.5359338477720763,
+            "Std_Sim": 0.11939407578532193
         },
         {
             "Stimulus": "Convergent",
-            "Entropy": 3.5937391555360487,
-            "Mean_Sim": 0.5579953441644909,
-            "Std_Sim": 0.125845244822857
+            "Entropy": 3.4222762940442975,
+            "Mean_Sim": 0.5802441684797144,
+            "Std_Sim": 0.10618964383102127
         },
         {
             "Stimulus": "Random",

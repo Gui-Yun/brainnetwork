@@ -1,0 +1,2 @@
+window_start,window_end,n_trials,n_neurons_total,n_neurons_removed,removed_ratio,full_accuracy_mean,full_accuracy_std,top10_ablation_accuracy_mean,top10_ablation_accuracy_std,random_drop_mean_accuracy,random_drop_std_accuracy,delta_full_minus_top10,delta_top10_minus_random_mean,ablation_rank_in_random
+18,21,180,493,50,0.10141987829614604,0.9944444444444445,0.009622504486493794,0.9722222222222222,0.00962250448649373,0.9741666666666667,0.0081160763461577,0.022222222222222254,-0.0019444444444445264,0.5

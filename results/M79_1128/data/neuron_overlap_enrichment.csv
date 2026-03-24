@@ -1,0 +1,3 @@
+overlap_category,n_neurons_category,n_important_neurons_total,observed_important_count,expected_important_count,observed_important_fraction,expected_important_fraction,enrichment_ratio,log2_enrichment,p_over,p_under,p_two_sided,p_fdr_bh
+Shared_Core,211,73,42,42.19999999999988,0.5753424657534169,0.5780821917808203,0.9952606635053767,-0.00685367104106627,0.5750933476249933,0.5300052083784534,1.0,1.0
+Condition_Biased,154,73,31,30.799999999999912,0.42465753424656955,0.4219178082191769,1.00649350649111,0.0093378645792984,0.5300052083784534,0.5750933476249933,1.0,1.0

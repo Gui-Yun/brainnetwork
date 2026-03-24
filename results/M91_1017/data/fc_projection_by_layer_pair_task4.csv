@@ -1,0 +1,7 @@
+layer_pair,layer_a,layer_b,n_edges,importance_sum,importance_mean,corr_mean,layer_source
+DepthLow--DepthHigh,DepthLow,DepthHigh,6162,0.22233775831924363,3.6082076974885366e-05,0.18863166095798123,depth_tertile_from_neuron_pos_spi_axis0
+DepthLow--DepthMid,DepthLow,DepthMid,6162,0.2182387950701726,3.54168768370939e-05,0.20129991170902706,depth_tertile_from_neuron_pos_spi_axis0
+DepthMid--DepthHigh,DepthMid,DepthHigh,6084,0.2115936176800252,3.4778701130839115e-05,0.20237889772205103,depth_tertile_from_neuron_pos_spi_axis0
+DepthLow--DepthLow,DepthLow,DepthLow,3081,0.12028182975278953,3.9039866846085537e-05,0.2163327975480879,depth_tertile_from_neuron_pos_spi_axis0
+DepthMid--DepthMid,DepthMid,DepthMid,3003,0.11429581842241646,3.806054559521028e-05,0.23698243713811784,depth_tertile_from_neuron_pos_spi_axis0
+DepthHigh--DepthHigh,DepthHigh,DepthHigh,3003,0.11325218075533322,3.771301390453987e-05,0.23008811834600296,depth_tertile_from_neuron_pos_spi_axis0

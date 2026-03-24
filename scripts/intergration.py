@@ -110,6 +110,13 @@ def load_optional_csv_by_pattern(data_dir, pattern):
     try: return pd.read_csv(paths[0])
     except Exception: return None
 
+def load_optional_csv_any(data_dir, filenames):
+    for fn in filenames:
+        df = load_optional_csv(data_dir, fn)
+        if df is not None:
+            return df
+    return None
+
 def load_all_mice_bundles(base_dir):
     pattern = os.path.join(base_dir, "*", "data", "*_statistics.json")
     json_files = sorted(glob.glob(pattern))
@@ -131,6 +138,28 @@ def load_all_mice_bundles(base_dir):
             "noise_decile_coupling": load_optional_csv(data_dir, "noise_corr_decile_coupling.csv"),
             "rr_overlap": load_optional_csv(data_dir, "rr_overlap_summary.csv"),
             "corr_deciles_csv": load_optional_csv(data_dir, f"{mouse_id}_correlation_deciles.csv"),
+            # Task1-2 decoder chain
+            "decoder_summary": load_optional_csv(data_dir, "decoder_summary.csv"),
+            "decoder_ablation_summary": load_optional_csv(data_dir, "decoder_ablation_summary.csv"),
+            # Task3 FC decoder
+            "fc_decoder_summary": load_optional_csv(data_dir, "fc_decoder_summary.csv"),
+            # Task4 robust importance (edge-level preferred, component-level fallback)
+            "fc_edge_stability": load_optional_csv_any(
+                data_dir,
+                ["fc_edge_importance_stability.csv", "fc_component_stability_selection.csv"],
+            ),
+            "fc_edge_ablation": load_optional_csv_any(
+                data_dir,
+                ["fc_edge_ablation_delta_acc.csv", "fc_component_ablation_delta_acc.csv"],
+            ),
+            "fc_projection_decile": load_optional_csv(data_dir, "fc_projection_by_strength_decile_task4.csv"),
+            "fc_projection_layer_pair": load_optional_csv(data_dir, "fc_projection_by_layer_pair_task4.csv"),
+            "fc_projection_strong_weak": load_optional_csv(data_dir, "fc_projection_strong_weak_match_task4.csv"),
+            # Task5
+            "fc_edge_decile_enrichment": load_optional_csv(data_dir, "fc_edge_decile_enrichment.csv"),
+            # Task6
+            "neuron_overlap_enrichment": load_optional_csv(data_dir, "neuron_overlap_enrichment.csv"),
+            "neuron_selectivity_overlap": load_optional_csv(data_dir, "neuron_selectivity_by_overlap.csv"),
         })
     print(f"[*] Loaded {len(bundles)} mice from {base_dir}")
     return bundles
@@ -261,6 +290,310 @@ def build_rr_overlap_dataframe(bundles):
     if not rows: return pd.DataFrame(columns=["mouse_id", "Subset", "Subset_Size"])
     return pd.concat(rows, ignore_index=True)
 
+def _concat_bundle_table(bundles, key, default_columns=None):
+    rows = []
+    for b in bundles:
+        df = b.get(key)
+        if df is None or df.empty:
+            continue
+        tmp = df.copy()
+        tmp["mouse_id"] = b["mouse_id"]
+        rows.append(tmp)
+    if not rows:
+        cols = default_columns or []
+        return pd.DataFrame(columns=(["mouse_id"] + cols if "mouse_id" not in cols else cols))
+    return pd.concat(rows, ignore_index=True)
+
+def _first_row_bundle_table(bundles, key, default_columns=None):
+    rows = []
+    for b in bundles:
+        df = b.get(key)
+        if df is None or df.empty:
+            continue
+        row = df.iloc[0].to_dict()
+        row["mouse_id"] = b["mouse_id"]
+        rows.append(row)
+    cols = (["mouse_id"] + (default_columns or []))
+    return pd.DataFrame(rows) if rows else pd.DataFrame(columns=cols)
+
+def build_decoder_summary_dataframe(bundles):
+    return _first_row_bundle_table(
+        bundles,
+        "decoder_summary",
+        default_columns=[
+            "accuracy_mean", "shuffle_accuracy_mean", "accuracy_minus_shuffle",
+            "recall_Divergent", "recall_Convergent", "recall_Random",
+        ],
+    )
+
+def build_decoder_ablation_summary_dataframe(bundles):
+    return _first_row_bundle_table(
+        bundles,
+        "decoder_ablation_summary",
+        default_columns=[
+            "full_accuracy_mean", "top10_ablation_accuracy_mean", "random_drop_mean_accuracy",
+            "delta_full_minus_top10", "delta_top10_minus_random_mean", "ablation_rank_in_random",
+        ],
+    )
+
+def build_fc_decoder_summary_dataframe(bundles):
+    return _first_row_bundle_table(
+        bundles,
+        "fc_decoder_summary",
+        default_columns=[
+            "accuracy_mean", "shuffle_accuracy_mean", "accuracy_minus_shuffle",
+            "fc_minus_activity_ref", "recall_Divergent", "recall_Convergent", "recall_Random",
+        ],
+    )
+
+def build_fc_edge_stability_long_dataframe(bundles):
+    return _concat_bundle_table(
+        bundles,
+        "fc_edge_stability",
+        default_columns=[
+            "rank", "edge_idx", "strength_decile", "corr_mean",
+            "edge_importance", "edge_importance_raw",
+            "selection_frequency", "mean_abs_coef",
+        ],
+    )
+
+def build_fc_edge_ablation_long_dataframe(bundles):
+    return _concat_bundle_table(
+        bundles,
+        "fc_edge_ablation",
+        default_columns=[
+            "ablation_type", "drop_fraction", "n_edges_dropped", "repeat_idx",
+            "base_accuracy_mean", "accuracy_mean", "delta_vs_base",
+        ],
+    )
+
+def build_fc_projection_decile_long_dataframe(bundles):
+    return _concat_bundle_table(
+        bundles,
+        "fc_projection_decile",
+        default_columns=["strength_decile", "n_edges", "importance_sum", "importance_mean", "corr_mean"],
+    )
+
+def build_fc_projection_layer_pair_long_dataframe(bundles):
+    return _concat_bundle_table(
+        bundles,
+        "fc_projection_layer_pair",
+        default_columns=["layer_pair", "n_edges", "importance_sum", "importance_mean", "corr_mean", "layer_source"],
+    )
+
+def build_fc_projection_strong_weak_long_dataframe(bundles):
+    return _concat_bundle_table(
+        bundles,
+        "fc_projection_strong_weak",
+        default_columns=[
+            "importance_strong_tail_decile10", "importance_weak_tail_decile1",
+            "importance_gap_d10_minus_d1", "corr_mean_decile10", "corr_mean_decile1",
+        ],
+    )
+
+def build_fc_edge_decile_enrichment_long_dataframe(bundles):
+    return _concat_bundle_table(
+        bundles,
+        "fc_edge_decile_enrichment",
+        default_columns=[
+            "level_type", "level", "observed_prop", "expected_prop",
+            "enrichment_ratio", "log2_enrichment", "p_two_sided", "p_fdr_bh",
+        ],
+    )
+
+def build_neuron_overlap_enrichment_long_dataframe(bundles):
+    return _concat_bundle_table(
+        bundles,
+        "neuron_overlap_enrichment",
+        default_columns=[
+            "overlap_category", "observed_important_fraction", "expected_important_fraction",
+            "enrichment_ratio", "log2_enrichment", "p_two_sided", "p_fdr_bh",
+        ],
+    )
+
+def build_neuron_selectivity_overlap_long_dataframe(bundles):
+    return _concat_bundle_table(
+        bundles,
+        "neuron_selectivity_overlap",
+        default_columns=[
+            "level_type", "overlap_category", "important_fraction",
+            "mean_selectivity_index", "mean_decoder_importance",
+            "mean_ablation_effect_proxy", "mean_ablation_drop_actual",
+        ],
+    )
+
+def build_fc_edge_stability_mouse_summary(stability_long_df):
+    cols = [
+        "mouse_id", "n_items", "importance_mean", "importance_sem",
+        "weak_tail_importance_sum", "strong_tail_importance_sum", "strong_minus_weak",
+        "top10_mean_importance",
+    ]
+    if stability_long_df is None or stability_long_df.empty:
+        return pd.DataFrame(columns=cols)
+
+    score_col = None
+    for candidate in ["edge_importance", "selection_frequency", "mean_abs_coef"]:
+        if candidate in stability_long_df.columns:
+            score_col = candidate
+            break
+    if score_col is None:
+        return pd.DataFrame(columns=cols)
+
+    rows = []
+    for mouse_id, sub in stability_long_df.groupby("mouse_id"):
+        vals = pd.to_numeric(sub[score_col], errors="coerce").dropna()
+        if vals.empty:
+            continue
+
+        topk = max(1, int(np.ceil(len(vals) * 0.10)))
+        top10_mean = float(vals.nlargest(topk).mean())
+        weak_sum = np.nan
+        strong_sum = np.nan
+        if "strength_decile" in sub.columns:
+            dec = pd.to_numeric(sub["strength_decile"], errors="coerce")
+            weak_sum = float(pd.to_numeric(sub.loc[dec.isin([1, 2]), score_col], errors="coerce").sum())
+            strong_sum = float(pd.to_numeric(sub.loc[dec.isin([9, 10]), score_col], errors="coerce").sum())
+
+        rows.append(
+            {
+                "mouse_id": mouse_id,
+                "n_items": int(vals.size),
+                "importance_mean": float(vals.mean()),
+                "importance_sem": float(vals.sem()) if vals.size > 1 else np.nan,
+                "weak_tail_importance_sum": weak_sum,
+                "strong_tail_importance_sum": strong_sum,
+                "strong_minus_weak": strong_sum - weak_sum if pd.notna(weak_sum) and pd.notna(strong_sum) else np.nan,
+                "top10_mean_importance": top10_mean,
+            }
+        )
+    return pd.DataFrame(rows, columns=cols)
+
+def _paired_wilcoxon_summary(df, left_col, right_col, label):
+    if df is None or df.empty or left_col not in df.columns or right_col not in df.columns:
+        return None
+    sub = df[["mouse_id", left_col, right_col]].dropna()
+    if sub.empty:
+        return None
+    delta = sub[left_col] - sub[right_col]
+    p_val = np.nan
+    if len(sub) >= 3:
+        try:
+            _, p_val = stats.wilcoxon(sub[left_col], sub[right_col])
+        except Exception:
+            p_val = np.nan
+    return {
+        "Analysis": label,
+        "N_mice": int(len(sub)),
+        "Mean_Delta": float(delta.mean()),
+        "SEM_Delta": float(delta.sem()) if len(sub) > 1 else np.nan,
+        "p_value": p_val,
+        "Significance": p_to_star(p_val),
+    }
+
+def _onesample_wilcoxon_summary(series, label):
+    vals = pd.to_numeric(series, errors="coerce").dropna()
+    if vals.empty:
+        return None
+    p_val = np.nan
+    if len(vals) >= 3:
+        try:
+            _, p_val = stats.wilcoxon(vals)
+        except Exception:
+            p_val = np.nan
+    return {
+        "Analysis": label,
+        "N_mice": int(len(vals)),
+        "Mean_Delta": float(vals.mean()),
+        "SEM_Delta": float(vals.sem()) if len(vals) > 1 else np.nan,
+        "p_value": p_val,
+        "Significance": p_to_star(p_val),
+    }
+
+def build_decoder_chain_stats_table(
+    task1_df,
+    task2_df,
+    task3_df,
+    task4_ablation_long_df,
+    task5_enrichment_long_df,
+    task6_overlap_enrichment_long_df,
+):
+    rows = []
+
+    r = _paired_wilcoxon_summary(task1_df, "accuracy_mean", "shuffle_accuracy_mean", "Task1: activity decoder vs shuffle")
+    if r is not None: rows.append(r)
+    r = _paired_wilcoxon_summary(task2_df, "full_accuracy_mean", "top10_ablation_accuracy_mean", "Task2: full vs top10 neuron ablation")
+    if r is not None: rows.append(r)
+    r = _paired_wilcoxon_summary(task2_df, "top10_ablation_accuracy_mean", "random_drop_mean_accuracy", "Task2: top10 ablation vs random drop")
+    if r is not None: rows.append(r)
+    r = _paired_wilcoxon_summary(task3_df, "accuracy_mean", "shuffle_accuracy_mean", "Task3: FC decoder vs shuffle")
+    if r is not None: rows.append(r)
+
+    if task1_df is not None and not task1_df.empty and task3_df is not None and not task3_df.empty:
+        merged = pd.merge(
+            task1_df[["mouse_id", "accuracy_mean"]].rename(columns={"accuracy_mean": "task1_acc"}),
+            task3_df[["mouse_id", "accuracy_mean"]].rename(columns={"accuracy_mean": "task3_acc"}),
+            on="mouse_id",
+            how="inner",
+        )
+        r = _paired_wilcoxon_summary(merged, "task3_acc", "task1_acc", "Task3 vs Task1: FC decoder vs activity decoder")
+        if r is not None: rows.append(r)
+
+    if task4_ablation_long_df is not None and not task4_ablation_long_df.empty:
+        if {"ablation_type", "drop_fraction", "mouse_id", "delta_vs_base"}.issubset(task4_ablation_long_df.columns):
+            top_df = task4_ablation_long_df[task4_ablation_long_df["ablation_type"] == "top"].copy()
+            rand_df = task4_ablation_long_df[task4_ablation_long_df["ablation_type"] == "random"].copy()
+            rand_mean = (
+                rand_df.groupby(["mouse_id", "drop_fraction"], as_index=False)["delta_vs_base"]
+                .mean()
+                .rename(columns={"delta_vs_base": "rand_delta_vs_base"})
+            )
+            top_keep = top_df[["mouse_id", "drop_fraction", "delta_vs_base"]].rename(columns={"delta_vs_base": "top_delta_vs_base"})
+            merged = pd.merge(top_keep, rand_mean, on=["mouse_id", "drop_fraction"], how="inner")
+            for frac in sorted(merged["drop_fraction"].dropna().unique().tolist()):
+                sub = merged[merged["drop_fraction"] == frac]
+                r = _paired_wilcoxon_summary(
+                    sub,
+                    "top_delta_vs_base",
+                    "rand_delta_vs_base",
+                    f"Task4: top-edge vs random-edge ablation (drop={int(round(frac * 100))}%)",
+                )
+                if r is not None: rows.append(r)
+
+    if task5_enrichment_long_df is not None and not task5_enrichment_long_df.empty:
+        if {"level_type", "level", "mouse_id", "log2_enrichment"}.issubset(task5_enrichment_long_df.columns):
+            regime = task5_enrichment_long_df[task5_enrichment_long_df["level_type"] == "regime"].copy()
+            pivot = regime.pivot_table(index="mouse_id", columns="level", values="log2_enrichment", aggfunc="first").reset_index()
+            if {"WeakTail_D1D2", "StrongTail_D9D10"}.issubset(pivot.columns):
+                r = _paired_wilcoxon_summary(
+                    pivot,
+                    "WeakTail_D1D2",
+                    "StrongTail_D9D10",
+                    "Task5: weak-tail vs strong-tail log2 enrichment",
+                )
+                if r is not None: rows.append(r)
+            if "WeakTail_D1D2" in pivot.columns:
+                r = _onesample_wilcoxon_summary(pivot["WeakTail_D1D2"], "Task5: weak-tail enrichment vs 0")
+                if r is not None: rows.append(r)
+
+    if task6_overlap_enrichment_long_df is not None and not task6_overlap_enrichment_long_df.empty:
+        if {"mouse_id", "overlap_category", "log2_enrichment"}.issubset(task6_overlap_enrichment_long_df.columns):
+            pivot = task6_overlap_enrichment_long_df.pivot_table(
+                index="mouse_id", columns="overlap_category", values="log2_enrichment", aggfunc="first"
+            ).reset_index()
+            if {"Shared_Core", "Condition_Biased"}.issubset(pivot.columns):
+                r = _paired_wilcoxon_summary(
+                    pivot,
+                    "Shared_Core",
+                    "Condition_Biased",
+                    "Task6: Shared_Core vs Condition_Biased enrichment",
+                )
+                if r is not None: rows.append(r)
+            if "Shared_Core" in pivot.columns:
+                r = _onesample_wilcoxon_summary(pivot["Shared_Core"], "Task6: Shared_Core enrichment vs 0")
+                if r is not None: rows.append(r)
+
+    return pd.DataFrame(rows)
+
 def perform_statistical_tests(df, metric):
     pivot = df.pivot(index="mouse_id", columns="Condition", values=metric).reindex(columns=CONDITIONS).dropna()
     if len(pivot) < 3:
@@ -284,6 +617,27 @@ def p_to_star(p_val):
     if p_val < 0.01: return "**"
     if p_val < 0.05: return "*"
     return "ns"
+
+def df_to_markdown(df, index=False):
+    try:
+        return df.to_markdown(index=index)
+    except Exception:
+        data = df.copy()
+        if not index and data.index.name is not None:
+            data = data.reset_index(drop=True)
+        if index:
+            data = data.reset_index()
+        cols = list(data.columns)
+        lines = []
+        lines.append("| " + " | ".join([str(c) for c in cols]) + " |")
+        lines.append("| " + " | ".join([":---"] * len(cols)) + " |")
+        for _, row in data.iterrows():
+            vals = []
+            for c in cols:
+                v = row[c]
+                vals.append("" if pd.isna(v) else str(v))
+            lines.append("| " + " | ".join(vals) + " |")
+        return "\n".join(lines)
 
 # ==========================================
 # 4. 优雅的可视化函数 (Elegant Publication Plotting Functions)
@@ -454,47 +808,129 @@ def plot_noise_decile_curve(noise_decile_df):
 # ==========================================
 # 5. Markdown 报告自动生成模块
 # ==========================================
-def generate_group_markdown(master_df, stat_results, image_paths, rr_overlap_df):
+def generate_group_markdown(
+    master_df,
+    stat_results,
+    image_paths,
+    rr_overlap_df,
+    table_paths=None,
+    decoder_chain_summary_df=None,
+    decoder_chain_stats_df=None,
+):
     md_path = os.path.join(GROUP_OUT_DIR, "Group_Analysis_Report.md")
-    
-    # 忽略 FutureWarning (observed=False)
+    table_paths = table_paths or {}
+
+    def _fmt(v, digits=4):
+        return "NA" if pd.isna(v) else f"{v:.{digits}f}"
+
     numeric_cols = [c for c in master_df.columns if c not in ["mouse_id", "Condition"] and pd.api.types.is_numeric_dtype(master_df[c])]
     summary_df = master_df.groupby("Condition", observed=False)[numeric_cols].agg(["mean", "sem"]).round(4)
 
+    desc = pd.DataFrame(index=summary_df.index)
+    for col in summary_df.columns.levels[0]:
+        desc[col] = [f"{_fmt(m)} ± {_fmt(s)}" for m, s in zip(summary_df[col]["mean"], summary_df[col]["sem"])]
+    desc = desc.reset_index()
+
+    stat_rows = []
+    for metric, res in stat_results.items():
+        ph = res.get("post_hoc", {})
+        stat_rows.append(
+            {
+                "Metric": metric,
+                "Main_Effect": res.get("main_effect", "N/A"),
+                "p_main": res.get("p_main", np.nan),
+                "Main_Star": p_to_star(res.get("p_main", np.nan)),
+                "Div_vs_Con": ph.get("Divergent vs Convergent", np.nan),
+                "Div_vs_Rand": ph.get("Divergent vs Random", np.nan),
+                "Con_vs_Rand": ph.get("Convergent vs Random", np.nan),
+            }
+        )
+    stat_df = pd.DataFrame(stat_rows).sort_values(by="p_main", na_position="last") if stat_rows else pd.DataFrame()
+
     with open(md_path, "w", encoding="utf-8") as f:
         f.write("# Group-level Multi-mouse Analysis Report\n\n")
-        f.write(f"**Number of mice**: {master_df['mouse_id'].nunique()}\n\n")
-        f.write(f"**Mouse IDs**: {', '.join(sorted(master_df['mouse_id'].unique()))}\n\n")
+        f.write("## 1. Dataset Overview\n\n")
+        f.write(f"- Number of mice: {master_df['mouse_id'].nunique()}\n")
+        f.write(f"- Mouse IDs: {', '.join(sorted(master_df['mouse_id'].unique()))}\n")
+        f.write(f"- Conditions: {', '.join(CONDITIONS)}\n\n")
 
-        f.write("## 1. Descriptive Statistics (Mean ± SEM)\n\n")
-        desc = pd.DataFrame(index=summary_df.index)
-        for col in summary_df.columns.levels[0]:
-            desc[col] = summary_df[col]["mean"].astype(str) + " ± " + summary_df[col]["sem"].astype(str)
-        f.write(desc.reset_index().to_markdown(index=False) + "\n\n")
-
-        f.write("## 2. Friedman + Wilcoxon Tests\n\n")
-        f.write("| Metric | Main Effect | Div vs Con | Div vs Rand | Con vs Rand |\n")
-        f.write("| :--- | :--- | :--- | :--- | :--- |\n")
-        for metric, res in stat_results.items():
-            ph = res.get("post_hoc", {})
-            f.write(
-                f"| **{metric}** | {res.get('main_effect', 'N/A')} | "
-                f"p={ph.get('Divergent vs Convergent', np.nan):.4f} ({p_to_star(ph.get('Divergent vs Convergent', np.nan))}) | "
-                f"p={ph.get('Divergent vs Random', np.nan):.4f} ({p_to_star(ph.get('Divergent vs Random', np.nan))}) | "
-                f"p={ph.get('Convergent vs Random', np.nan):.4f} ({p_to_star(ph.get('Convergent vs Random', np.nan))}) |\n"
-            )
+        f.write("## 2. Exported Data Tables\n\n")
+        if table_paths:
+            for name, path in table_paths.items():
+                f.write(f"- {name}: `{os.path.basename(path)}`\n")
+        else:
+            f.write("- No external tables exported in this run.\n")
         f.write("\n")
 
-        if not rr_overlap_df.empty:
-            f.write("## 3. RR Overlap Summary Across Mice\n\n")
-            rr_summary = rr_overlap_df.groupby("Subset", as_index=False).agg(Mean_Size=("Subset_Size", "mean"), SEM_Size=("Subset_Size", "sem"))
-            f.write(rr_summary.to_markdown(index=False) + "\n\n")
+        f.write("## 3. Descriptive Statistics (Mean ± SEM)\n\n")
+        f.write(df_to_markdown(desc, index=False) + "\n\n")
 
-        f.write("## 4. Figures\n\n")
-        for name, path in image_paths.items():
-            if path is None: continue
-            rel = os.path.basename(path)
-            f.write(f"### {name}\n![{name}](./{rel})\n\n")
+        f.write("## 4. Friedman + Wilcoxon Tests\n\n")
+        if stat_df.empty:
+            f.write("No valid condition-level tests were computed.\n\n")
+        else:
+            stat_disp = stat_df.copy()
+            for c in ["p_main", "Div_vs_Con", "Div_vs_Rand", "Con_vs_Rand"]:
+                stat_disp[c] = stat_disp[c].map(lambda x: _fmt(x, digits=4))
+            f.write(df_to_markdown(stat_disp, index=False) + "\n\n")
+
+        section_idx = 5
+        if not rr_overlap_df.empty:
+            f.write(f"## {section_idx}. RR Overlap Summary Across Mice\n\n")
+            rr_summary = rr_overlap_df.groupby("Subset", as_index=False).agg(
+                Mean_Size=("Subset_Size", "mean"),
+                SEM_Size=("Subset_Size", "sem"),
+            )
+            rr_summary["Mean_Size"] = rr_summary["Mean_Size"].round(4)
+            rr_summary["SEM_Size"] = rr_summary["SEM_Size"].round(4)
+            f.write(df_to_markdown(rr_summary, index=False) + "\n\n")
+            section_idx += 1
+
+        if decoder_chain_summary_df is not None and not decoder_chain_summary_df.empty:
+            f.write(f"## {section_idx}. Decoder Chain Summary (Tasks 1-6)\n\n")
+            f.write(df_to_markdown(decoder_chain_summary_df, index=False) + "\n\n")
+            section_idx += 1
+
+        if decoder_chain_stats_df is not None and not decoder_chain_stats_df.empty:
+            f.write(f"## {section_idx}. Decoder Chain Statistical Tests (Tasks 1-6)\n\n")
+            stat_local = decoder_chain_stats_df.copy()
+            for c in ["Mean_Delta", "SEM_Delta", "p_value"]:
+                if c in stat_local.columns:
+                    stat_local[c] = stat_local[c].map(lambda x: _fmt(x, digits=4))
+            f.write(df_to_markdown(stat_local, index=False) + "\n\n")
+            section_idx += 1
+
+        f.write(f"## {section_idx}. Figures\n\n")
+        figure_groups = [
+            ("Core and Correlation Metrics", [
+                "Combined Strong vs Weak",
+                "RSM Mean Similarity",
+                "Strong Connections (Top 10%)",
+                "Weak Connections (Bottom 10%)",
+                "Strong-Weak Correlation Gap",
+                "RR Participants Ratio",
+                "Response Gini (Mean)",
+                "Decile Correlation Curve",
+                "Noise Decile Curve",
+            ]),
+            ("Binding Analyses", ["Cross-animal Binding", "Absolute State Binding", "LMM State Binding"]),
+            ("Decoder Chain (Tasks 1-6)", [
+                "Decoder Accuracy (Task1+Task3)",
+                "Decoder Ablation (Task2)",
+                "Edge Ablation Robustness (Task4)",
+                "Edge Decile Enrichment (Task5)",
+                "Neuron Linking (Task6)",
+            ]),
+        ]
+        for group_name, names in figure_groups:
+            available = [name for name in names if image_paths.get(name)]
+            if not available:
+                continue
+            f.write(f"### {group_name}\n\n")
+            for name in available:
+                rel = os.path.basename(image_paths[name])
+                f.write(f"#### {name}\n![{name}](./{rel})\n\n")
+
     print(f"[*] Group markdown report written to: {md_path}")
 
 def plot_cross_animal_binding(df):
@@ -711,33 +1147,546 @@ def plot_lmm_state_binding(df):
     save_figure_variants(fig, out)
     plt.close(fig)
     return out
-# ==========================================
-# 6. Main Execution
-# ==========================================
-if __name__ == "__main__":
+
+def _mean_sem(values):
+    vals = pd.to_numeric(pd.Series(values), errors="coerce").dropna()
+    if vals.empty:
+        return np.nan, np.nan
+    m = float(vals.mean())
+    sem = float(vals.sem()) if len(vals) > 1 else np.nan
+    return m, sem
+
+def _plot_paired_metric(ax, df, left_col, right_col, left_label, right_label, colors, ylabel, title):
+    if df is None or df.empty or left_col not in df.columns or right_col not in df.columns:
+        return False
+    sub = df[["mouse_id", left_col, right_col]].dropna()
+    if sub.empty:
+        return False
+
+    x = np.array([0, 1], dtype=float)
+    for _, row in sub.iterrows():
+        y = [float(row[left_col]), float(row[right_col])]
+        ax.plot(x, y, color="#999999", alpha=0.45, linewidth=1.0, zorder=1)
+        ax.scatter(x, y, color=[colors[0], colors[1]], s=26, zorder=2)
+
+    mean_left, sem_left = _mean_sem(sub[left_col])
+    mean_right, sem_right = _mean_sem(sub[right_col])
+    ax.errorbar(
+        x,
+        [mean_left, mean_right],
+        yerr=[sem_left, sem_right],
+        fmt="o-",
+        color="#222222",
+        linewidth=2.0,
+        capsize=4,
+        zorder=3,
+    )
+    ax.set_xticks(x)
+    ax.set_xticklabels([left_label, right_label], rotation=18)
+    ax.set_ylabel(ylabel)
+    ax.set_title(f"{title}\nN={sub['mouse_id'].nunique()} mice")
+    ax.grid(axis="y", linestyle="--", alpha=0.25)
+    style_axis(ax)
+    return True
+
+def plot_decoder_chain_accuracy(task1_df, task3_df):
+    has_task1 = task1_df is not None and not task1_df.empty
+    has_task3 = task3_df is not None and not task3_df.empty
+    if not has_task1 and not has_task3:
+        return None
+
+    fig, axes = plt.subplots(1, 2, figsize=(11.0, 4.6), dpi=180)
+    used_left = _plot_paired_metric(
+        axes[0],
+        task1_df,
+        "shuffle_accuracy_mean",
+        "accuracy_mean",
+        "Shuffle",
+        "Activity",
+        colors=["#B9CFE7", "#4C78A8"],
+        ylabel="Accuracy",
+        title="Task1 Decoder",
+    ) if has_task1 else False
+    if not used_left:
+        axes[0].axis("off")
+        axes[0].set_title("Task1 Decoder (not available)")
+
+    used_right = _plot_paired_metric(
+        axes[1],
+        task3_df,
+        "shuffle_accuracy_mean",
+        "accuracy_mean",
+        "Shuffle",
+        "FC",
+        colors=["#C7D5B8", "#54A24B"],
+        ylabel="Accuracy",
+        title="Task3 FC Decoder",
+    ) if has_task3 else False
+    if not used_right:
+        axes[1].axis("off")
+        axes[1].set_title("Task3 FC Decoder (not available)")
+
+    fig.tight_layout()
+    out = os.path.join(GROUP_OUT_DIR, "group_decoder_chain_accuracy.png")
+    save_figure_variants(fig, out)
+    plt.close(fig)
+    return out
+
+def plot_task2_ablation_summary(task2_df):
+    required = {"full_accuracy_mean", "top10_ablation_accuracy_mean", "random_drop_mean_accuracy"}
+    if task2_df is None or task2_df.empty or not required.issubset(task2_df.columns):
+        return None
+    sub = task2_df[["mouse_id", "full_accuracy_mean", "top10_ablation_accuracy_mean", "random_drop_mean_accuracy"]].dropna()
+    if sub.empty:
+        return None
+
+    labels = ["Full", "Top10 ablation", "Random drop"]
+    cols = ["full_accuracy_mean", "top10_ablation_accuracy_mean", "random_drop_mean_accuracy"]
+    x = np.arange(3)
+    colors = ["#4C78A8", "#E45756", "#72B7B2"]
+
+    fig, ax = plt.subplots(figsize=(6.6, 4.8), dpi=180)
+    for _, row in sub.iterrows():
+        y = [float(row[c]) for c in cols]
+        ax.plot(x, y, color="#999999", alpha=0.45, linewidth=1.0, zorder=1)
+        ax.scatter(x, y, color=colors, s=28, zorder=2)
+
+    means = [sub[c].mean() for c in cols]
+    sems = [sub[c].sem() if len(sub) > 1 else np.nan for c in cols]
+    ax.errorbar(x, means, yerr=sems, fmt="o-", color="#222222", linewidth=2.0, capsize=4, zorder=3)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=15)
+    ax.set_ylabel("Accuracy")
+    ax.set_title(f"Task2 Top10% Neuron Ablation Across Mice\nN={sub['mouse_id'].nunique()} mice")
+    ax.grid(axis="y", linestyle="--", alpha=0.25)
+    style_axis(ax)
+
+    out = os.path.join(GROUP_OUT_DIR, "group_decoder_ablation_task2.png")
+    save_figure_variants(fig, out)
+    plt.close(fig)
+    return out
+
+def plot_task4_edge_ablation(task4_edge_ablation_long_df):
+    required = {"mouse_id", "ablation_type", "drop_fraction", "delta_vs_base"}
+    if task4_edge_ablation_long_df is None or task4_edge_ablation_long_df.empty or not required.issubset(task4_edge_ablation_long_df.columns):
+        return None
+
+    sub = task4_edge_ablation_long_df.copy()
+    top_df = sub[sub["ablation_type"] == "top"][["mouse_id", "drop_fraction", "delta_vs_base"]].rename(
+        columns={"delta_vs_base": "top_delta"}
+    )
+    rand_df = (
+        sub[sub["ablation_type"] == "random"]
+        .groupby(["mouse_id", "drop_fraction"], as_index=False)["delta_vs_base"]
+        .mean()
+        .rename(columns={"delta_vs_base": "random_delta"})
+    )
+    merged = pd.merge(top_df, rand_df, on=["mouse_id", "drop_fraction"], how="outer")
+    if merged.empty:
+        return None
+
+    plot_rows = []
+    for frac, g in merged.groupby("drop_fraction"):
+        mt, st = _mean_sem(g["top_delta"])
+        mr, sr = _mean_sem(g["random_delta"])
+        plot_rows.append(
+            {
+                "drop_fraction": float(frac),
+                "top_mean": mt, "top_sem": st,
+                "random_mean": mr, "random_sem": sr,
+                "n_mice": int(g["mouse_id"].nunique()),
+            }
+        )
+    plot_df = pd.DataFrame(plot_rows).sort_values("drop_fraction")
+    if plot_df.empty:
+        return None
+
+    x = np.arange(len(plot_df))
+    fig, ax = plt.subplots(figsize=(7.0, 4.8), dpi=180)
+    ax.errorbar(x, plot_df["top_mean"], yerr=plot_df["top_sem"], fmt="o-", color="#E45756", capsize=4, label="Top-edge drop")
+    ax.errorbar(x, plot_df["random_mean"], yerr=plot_df["random_sem"], fmt="s--", color="#54A24B", capsize=4, label="Random-edge drop")
+    ax.axhline(0.0, color="#666666", linewidth=1.0)
+    ax.set_xticks(x)
+    ax.set_xticklabels([f"{int(round(v * 100))}%" for v in plot_df["drop_fraction"]])
+    ax.set_xlabel("Dropped edge fraction")
+    ax.set_ylabel("Accuracy drop vs baseline")
+    ax.set_title("Task4 Edge Ablation Robustness Across Mice")
+    ax.legend(frameon=False)
+    ax.grid(axis="y", linestyle="--", alpha=0.25)
+    style_axis(ax)
+
+    out = os.path.join(GROUP_OUT_DIR, "group_fc_edge_ablation_task4.png")
+    save_figure_variants(fig, out)
+    plt.close(fig)
+    return out
+
+def plot_task5_decile_enrichment(task5_enrichment_long_df):
+    required = {"mouse_id", "level_type", "level", "log2_enrichment"}
+    if task5_enrichment_long_df is None or task5_enrichment_long_df.empty or not required.issubset(task5_enrichment_long_df.columns):
+        return None
+
+    dec = task5_enrichment_long_df[task5_enrichment_long_df["level_type"] == "decile"].copy()
+    if dec.empty:
+        return None
+    dec["decile_idx"] = dec["level"].astype(str).str.replace("D", "", regex=False)
+    dec["decile_idx"] = pd.to_numeric(dec["decile_idx"], errors="coerce")
+    dec = dec.dropna(subset=["decile_idx"])
+    if dec.empty:
+        return None
+
+    dec_stat = dec.groupby("decile_idx", as_index=False)["log2_enrichment"].agg(
+        log2_mean="mean",
+        log2_sem="sem",
+    )
+
+    regime = task5_enrichment_long_df[
+        (task5_enrichment_long_df["level_type"] == "regime")
+        & (task5_enrichment_long_df["level"].isin(["WeakTail_D1D2", "StrongTail_D9D10"]))
+    ].copy()
+    regime_stat = (
+        regime.groupby("level", as_index=False)["log2_enrichment"].agg(
+            log2_mean="mean",
+            log2_sem="sem",
+        )
+        if not regime.empty
+        else pd.DataFrame()
+    )
+
+    fig, axes = plt.subplots(1, 2, figsize=(12.0, 4.8), dpi=180)
+
+    x = dec_stat["decile_idx"].to_numpy(dtype=int)
+    axes[0].errorbar(x, dec_stat["log2_mean"], yerr=dec_stat["log2_sem"], fmt="o-", color="#4C78A8", capsize=4)
+    axes[0].axhline(0.0, color="#666666", linewidth=1.0)
+    axes[0].set_xticks(np.arange(1, 11, 1))
+    axes[0].set_xlabel("Decile (1=weak, 10=strong)")
+    axes[0].set_ylabel("Mean log2 enrichment")
+    axes[0].set_title("Task5 Decile Enrichment")
+    axes[0].grid(axis="y", linestyle="--", alpha=0.25)
+    style_axis(axes[0])
+
+    if regime_stat.empty:
+        axes[1].axis("off")
+        axes[1].set_title("Task5 Regime Enrichment (not available)")
+    else:
+        regime_stat["level"] = pd.Categorical(
+            regime_stat["level"],
+            categories=["WeakTail_D1D2", "StrongTail_D9D10"],
+            ordered=True,
+        )
+        regime_stat = regime_stat.sort_values("level")
+        x2 = np.arange(len(regime_stat))
+        axes[1].bar(x2, regime_stat["log2_mean"], yerr=regime_stat["log2_sem"], color=["#72B7B2", "#F58518"], alpha=0.9, capsize=4)
+        axes[1].axhline(0.0, color="#666666", linewidth=1.0)
+        axes[1].set_xticks(x2)
+        axes[1].set_xticklabels(regime_stat["level"].astype(str), rotation=15)
+        axes[1].set_ylabel("Mean log2 enrichment")
+        axes[1].set_title("Task5 Regime Enrichment")
+        axes[1].grid(axis="y", linestyle="--", alpha=0.25)
+        style_axis(axes[1])
+
+    fig.tight_layout()
+    out = os.path.join(GROUP_OUT_DIR, "group_fc_edge_decile_enrichment_task5.png")
+    save_figure_variants(fig, out)
+    plt.close(fig)
+    return out
+
+def plot_task6_linking(task6_overlap_enrichment_long_df, task6_selectivity_long_df):
+    has_overlap = (
+        task6_overlap_enrichment_long_df is not None
+        and not task6_overlap_enrichment_long_df.empty
+        and {"overlap_category", "log2_enrichment"}.issubset(task6_overlap_enrichment_long_df.columns)
+    )
+    has_selectivity = (
+        task6_selectivity_long_df is not None
+        and not task6_selectivity_long_df.empty
+        and {"level_type", "overlap_category", "mean_selectivity_index"}.issubset(task6_selectivity_long_df.columns)
+    )
+    if not has_overlap and not has_selectivity:
+        return None
+
+    fig, axes = plt.subplots(1, 2, figsize=(12.0, 4.8), dpi=180)
+
+    if has_overlap:
+        enr = task6_overlap_enrichment_long_df.groupby("overlap_category", as_index=False)["log2_enrichment"].agg(
+            log2_mean="mean",
+            log2_sem="sem",
+        )
+        x = np.arange(len(enr))
+        axes[0].bar(x, enr["log2_mean"], yerr=enr["log2_sem"], color="#4C78A8", alpha=0.9, capsize=4)
+        axes[0].axhline(0.0, color="#666666", linewidth=1.0)
+        axes[0].set_xticks(x)
+        axes[0].set_xticklabels(enr["overlap_category"].astype(str), rotation=18)
+        axes[0].set_ylabel("Mean log2 enrichment")
+        axes[0].set_title("Task6 Overlap Enrichment")
+        axes[0].grid(axis="y", linestyle="--", alpha=0.25)
+        style_axis(axes[0])
+    else:
+        axes[0].axis("off")
+        axes[0].set_title("Task6 Overlap Enrichment (not available)")
+
+    if has_selectivity:
+        sel = task6_selectivity_long_df[task6_selectivity_long_df["level_type"] == "coarse"].copy()
+        if sel.empty:
+            axes[1].axis("off")
+            axes[1].set_title("Task6 Selectivity by Overlap (not available)")
+        else:
+            sel_stat = sel.groupby("overlap_category", as_index=False)["mean_selectivity_index"].agg(
+                si_mean="mean",
+                si_sem="sem",
+            )
+            x2 = np.arange(len(sel_stat))
+            axes[1].bar(x2, sel_stat["si_mean"], yerr=sel_stat["si_sem"], color="#72B7B2", alpha=0.9, capsize=4)
+            axes[1].set_xticks(x2)
+            axes[1].set_xticklabels(sel_stat["overlap_category"].astype(str), rotation=18)
+            axes[1].set_ylabel("Mean selectivity index")
+            axes[1].set_title("Task6 Selectivity by Overlap")
+            axes[1].grid(axis="y", linestyle="--", alpha=0.25)
+            style_axis(axes[1])
+    else:
+        axes[1].axis("off")
+        axes[1].set_title("Task6 Selectivity by Overlap (not available)")
+
+    fig.tight_layout()
+    out = os.path.join(GROUP_OUT_DIR, "group_neuron_linking_task6.png")
+    save_figure_variants(fig, out)
+    plt.close(fig)
+    return out
+
+def build_decoder_chain_summary_table(
+    task1_df,
+    task2_df,
+    task3_df,
+    task4_edge_ablation_long_df,
+    task5_enrichment_long_df,
+    task6_overlap_enrichment_long_df,
+):
+    rows = []
+
+    def _append_metric(df, col, label):
+        if df is None or df.empty or col not in df.columns:
+            return
+        vals = pd.to_numeric(df[col], errors="coerce").dropna()
+        if vals.empty:
+            return
+        rows.append(
+            {
+                "Metric": label,
+                "N_mice": int(vals.size),
+                "Mean": float(vals.mean()),
+                "SEM": float(vals.sem()) if vals.size > 1 else np.nan,
+            }
+        )
+
+    _append_metric(task1_df, "accuracy_mean", "Task1 activity decoder accuracy")
+    _append_metric(task1_df, "accuracy_minus_shuffle", "Task1 activity decoder minus shuffle")
+    _append_metric(task2_df, "delta_full_minus_top10", "Task2 full minus top10 ablation")
+    _append_metric(task3_df, "accuracy_mean", "Task3 FC decoder accuracy")
+    _append_metric(task3_df, "accuracy_minus_shuffle", "Task3 FC decoder minus shuffle")
+
+    if task4_edge_ablation_long_df is not None and not task4_edge_ablation_long_df.empty:
+        top = task4_edge_ablation_long_df[task4_edge_ablation_long_df["ablation_type"] == "top"].copy()
+        for frac in sorted(top["drop_fraction"].dropna().unique().tolist()):
+            vals = pd.to_numeric(top.loc[top["drop_fraction"] == frac, "delta_vs_base"], errors="coerce").dropna()
+            if vals.empty:
+                continue
+            rows.append(
+                {
+                    "Metric": f"Task4 top-edge ablation delta (drop={int(round(frac * 100))}%)",
+                    "N_mice": int(vals.size),
+                    "Mean": float(vals.mean()),
+                    "SEM": float(vals.sem()) if vals.size > 1 else np.nan,
+                }
+            )
+
+    if task5_enrichment_long_df is not None and not task5_enrichment_long_df.empty:
+        weak = task5_enrichment_long_df[
+            (task5_enrichment_long_df["level_type"] == "regime")
+            & (task5_enrichment_long_df["level"] == "WeakTail_D1D2")
+        ]
+        _append_metric(weak, "log2_enrichment", "Task5 weak-tail log2 enrichment")
+
+    if task6_overlap_enrichment_long_df is not None and not task6_overlap_enrichment_long_df.empty:
+        shared = task6_overlap_enrichment_long_df[task6_overlap_enrichment_long_df["overlap_category"] == "Shared_Core"]
+        _append_metric(shared, "log2_enrichment", "Task6 Shared_Core log2 enrichment")
+
+    return pd.DataFrame(rows)
+
+def run_group_integration():
     bundles = load_all_mice_bundles(RESULTS_BASE_DIR)
+    if not bundles:
+        print("[!] No mice loaded. Please check the results directory structure.")
+        return
 
+    table_paths = {}
+
+    # ===== Original multi-mouse integration outputs =====
     master_df = build_master_dataframe(bundles)
+    master_path = os.path.join(GROUP_OUT_DIR, "group_master_metrics.csv")
+    master_df.to_csv(master_path, index=False)
+    table_paths["Master metrics"] = master_path
+
     decile_df = build_decile_dataframe(bundles)
+    decile_path = os.path.join(GROUP_OUT_DIR, "group_corr_deciles_long.csv")
+    decile_df.to_csv(decile_path, index=False)
+    table_paths["Correlation deciles long"] = decile_path
+
     noise_decile_long_df = build_noise_decile_coupling_long_dataframe(bundles)
-    rr_overlap_df = build_rr_overlap_dataframe(bundles) # 恢复 RR Overlap 数据
+    noise_decile_path = os.path.join(GROUP_OUT_DIR, "group_noise_corr_decile_coupling_long.csv")
+    noise_decile_long_df.to_csv(noise_decile_path, index=False)
+    table_paths["Noise decile coupling long"] = noise_decile_path
 
-    # ---------------- 测试指标选择 ----------------
-    metrics_to_test = [m for m in [
-        "Entropy", "Mean_RSM_Sim", "Mean_Correlation", "Strong_Correlation", "Weak_Correlation",
-        "Strong_Weak_Gap", "Participants_Ratio", "Gini_Mean", "PR_Mean", "Effective_Dim_PR",
-        "Sig_Mean_Corr", "Noise_Mean_Corr"
-    ] if m in master_df.columns and not master_df[m].isna().all()]
+    rr_overlap_df = build_rr_overlap_dataframe(bundles)
+    rr_overlap_path = os.path.join(GROUP_OUT_DIR, "group_rr_overlap_long.csv")
+    rr_overlap_df.to_csv(rr_overlap_path, index=False)
+    table_paths["RR overlap long"] = rr_overlap_path
 
+    # ===== New Task1-6 multi-mouse integration =====
+    task1_df = build_decoder_summary_dataframe(bundles)
+    task1_path = os.path.join(GROUP_OUT_DIR, "group_decoder_summary_long.csv")
+    task1_df.to_csv(task1_path, index=False)
+    table_paths["Task1 decoder summary long"] = task1_path
+
+    task2_df = build_decoder_ablation_summary_dataframe(bundles)
+    task2_path = os.path.join(GROUP_OUT_DIR, "group_decoder_ablation_summary_long.csv")
+    task2_df.to_csv(task2_path, index=False)
+    table_paths["Task2 ablation summary long"] = task2_path
+
+    task3_df = build_fc_decoder_summary_dataframe(bundles)
+    task3_path = os.path.join(GROUP_OUT_DIR, "group_fc_decoder_summary_long.csv")
+    task3_df.to_csv(task3_path, index=False)
+    table_paths["Task3 FC decoder summary long"] = task3_path
+
+    task4_stability_long_df = build_fc_edge_stability_long_dataframe(bundles)
+    task4_stability_path = os.path.join(GROUP_OUT_DIR, "group_fc_edge_importance_stability_long.csv")
+    task4_stability_long_df.to_csv(task4_stability_path, index=False)
+    table_paths["Task4 edge stability long"] = task4_stability_path
+
+    task4_stability_summary_df = build_fc_edge_stability_mouse_summary(task4_stability_long_df)
+    task4_stability_summary_path = os.path.join(GROUP_OUT_DIR, "group_fc_edge_importance_mouse_summary.csv")
+    task4_stability_summary_df.to_csv(task4_stability_summary_path, index=False)
+    table_paths["Task4 edge stability mouse summary"] = task4_stability_summary_path
+
+    task4_ablation_long_df = build_fc_edge_ablation_long_dataframe(bundles)
+    task4_ablation_path = os.path.join(GROUP_OUT_DIR, "group_fc_edge_ablation_long.csv")
+    task4_ablation_long_df.to_csv(task4_ablation_path, index=False)
+    table_paths["Task4 edge ablation long"] = task4_ablation_path
+
+    task4_proj_decile_long_df = build_fc_projection_decile_long_dataframe(bundles)
+    task4_proj_decile_path = os.path.join(GROUP_OUT_DIR, "group_fc_projection_by_strength_decile_long.csv")
+    task4_proj_decile_long_df.to_csv(task4_proj_decile_path, index=False)
+    table_paths["Task4 projection decile long"] = task4_proj_decile_path
+
+    task4_proj_layer_long_df = build_fc_projection_layer_pair_long_dataframe(bundles)
+    task4_proj_layer_path = os.path.join(GROUP_OUT_DIR, "group_fc_projection_by_layer_pair_long.csv")
+    task4_proj_layer_long_df.to_csv(task4_proj_layer_path, index=False)
+    table_paths["Task4 projection layer pair long"] = task4_proj_layer_path
+
+    task4_proj_sw_long_df = build_fc_projection_strong_weak_long_dataframe(bundles)
+    task4_proj_sw_path = os.path.join(GROUP_OUT_DIR, "group_fc_projection_strong_weak_match_long.csv")
+    task4_proj_sw_long_df.to_csv(task4_proj_sw_path, index=False)
+    table_paths["Task4 projection strong-weak match long"] = task4_proj_sw_path
+
+    task5_enrichment_long_df = build_fc_edge_decile_enrichment_long_dataframe(bundles)
+    task5_path = os.path.join(GROUP_OUT_DIR, "group_fc_edge_decile_enrichment_long.csv")
+    task5_enrichment_long_df.to_csv(task5_path, index=False)
+    table_paths["Task5 edge decile enrichment long"] = task5_path
+
+    task6_overlap_long_df = build_neuron_overlap_enrichment_long_dataframe(bundles)
+    task6_overlap_path = os.path.join(GROUP_OUT_DIR, "group_neuron_overlap_enrichment_long.csv")
+    task6_overlap_long_df.to_csv(task6_overlap_path, index=False)
+    table_paths["Task6 neuron overlap enrichment long"] = task6_overlap_path
+
+    task6_selectivity_long_df = build_neuron_selectivity_overlap_long_dataframe(bundles)
+    task6_selectivity_path = os.path.join(GROUP_OUT_DIR, "group_neuron_selectivity_by_overlap_long.csv")
+    task6_selectivity_long_df.to_csv(task6_selectivity_path, index=False)
+    table_paths["Task6 neuron selectivity by overlap long"] = task6_selectivity_path
+
+    coverage_frames = [
+        ("Task1 decoder summary", task1_df),
+        ("Task2 ablation summary", task2_df),
+        ("Task3 FC decoder summary", task3_df),
+        ("Task4 edge stability", task4_stability_long_df),
+        ("Task4 edge ablation", task4_ablation_long_df),
+        ("Task5 edge decile enrichment", task5_enrichment_long_df),
+        ("Task6 overlap enrichment", task6_overlap_long_df),
+        ("Task6 selectivity by overlap", task6_selectivity_long_df),
+    ]
+    for name, df_now in coverage_frames:
+        n_rows = 0 if df_now is None else len(df_now)
+        if df_now is None or df_now.empty or "mouse_id" not in df_now.columns:
+            n_mice = 0
+        else:
+            n_mice = int(df_now["mouse_id"].nunique())
+        print(f"[*] Coverage - {name}: {n_mice} mice, {n_rows} rows")
+
+    # ===== Condition-level statistical tests =====
+    metrics_to_test = [
+        m
+        for m in [
+            "Entropy",
+            "Mean_RSM_Sim",
+            "Mean_Correlation",
+            "Strong_Correlation",
+            "Weak_Correlation",
+            "Strong_Weak_Gap",
+            "Participants_Ratio",
+            "Gini_Mean",
+            "PR_Mean",
+            "Effective_Dim_PR",
+            "Sig_Mean_Corr",
+            "Noise_Mean_Corr",
+        ]
+        if m in master_df.columns and not master_df[m].isna().all()
+    ]
     stat_results = {m: perform_statistical_tests(master_df, m) for m in metrics_to_test}
 
-    # ---------------- 可视化生成 ----------------
+    stat_rows = []
+    for metric, res in stat_results.items():
+        ph = res.get("post_hoc", {})
+        stat_rows.append(
+            {
+                "Metric": metric,
+                "Main_Effect": res.get("main_effect", "N/A"),
+                "p_main": res.get("p_main", np.nan),
+                "Div_vs_Con": ph.get("Divergent vs Convergent", np.nan),
+                "Div_vs_Rand": ph.get("Divergent vs Random", np.nan),
+                "Con_vs_Rand": ph.get("Convergent vs Random", np.nan),
+            }
+        )
+    stat_df = pd.DataFrame(stat_rows)
+    stat_path = os.path.join(GROUP_OUT_DIR, "group_statistical_tests_summary.csv")
+    stat_df.to_csv(stat_path, index=False)
+    table_paths["Condition-level statistical tests"] = stat_path
+
+    decoder_chain_summary_df = build_decoder_chain_summary_table(
+        task1_df,
+        task2_df,
+        task3_df,
+        task4_ablation_long_df,
+        task5_enrichment_long_df,
+        task6_overlap_long_df,
+    )
+    decoder_chain_summary_path = os.path.join(GROUP_OUT_DIR, "group_decoder_chain_summary.csv")
+    decoder_chain_summary_df.to_csv(decoder_chain_summary_path, index=False)
+    table_paths["Task1-6 decoder chain summary"] = decoder_chain_summary_path
+
+    decoder_chain_stats_df = build_decoder_chain_stats_table(
+        task1_df,
+        task2_df,
+        task3_df,
+        task4_ablation_long_df,
+        task5_enrichment_long_df,
+        task6_overlap_long_df,
+    )
+    decoder_chain_stats_path = os.path.join(GROUP_OUT_DIR, "group_decoder_chain_stat_tests.csv")
+    decoder_chain_stats_df.to_csv(decoder_chain_stats_path, index=False)
+    table_paths["Task1-6 decoder chain statistical tests"] = decoder_chain_stats_path
+
+    # ===== Figures =====
     image_paths = {}
-    
-    # 1. 强弱对比双面板箱型图 (Boxplot Dual-panel)
     image_paths["Combined Strong vs Weak"] = plot_combined_strong_weak(master_df)
 
-    # 2. 核心指标的极简柱状图
     core_metrics = [
         ("Mean_RSM_Sim", "Cosine similarity", "RSM Mean Similarity"),
         ("Strong_Correlation", "Correlation", "Strong Connections (Top 10%)"),
@@ -747,15 +1696,40 @@ if __name__ == "__main__":
         ("Gini_Mean", "Gini Coefficient", "Response Gini (Mean)"),
     ]
     for metric, ylabel, title in core_metrics:
-        image_paths[title] = plot_group_metric(master_df, metric, ylabel, title, stat_res=stat_results.get(metric, {}), save_name=f"group_{metric.lower()}.png")
+        image_paths[title] = plot_group_metric(
+            master_df,
+            metric,
+            ylabel,
+            title,
+            stat_res=stat_results.get(metric, {}),
+            save_name=f"group_{metric.lower()}.png",
+        )
 
-    # 3. 分层曲线 (阴影误差带)
     image_paths["Decile Correlation Curve"] = plot_decile_curve(decile_df)
     image_paths["Noise Decile Curve"] = plot_noise_decile_curve(noise_decile_long_df)
     image_paths["Cross-animal Binding"] = plot_cross_animal_binding(master_df)
     image_paths["Absolute State Binding"] = plot_absolute_state_binding(master_df)
     image_paths["LMM State Binding"] = plot_lmm_state_binding(master_df)
-    # 4. 生成Markdown报告
-    generate_group_markdown(master_df, stat_results, image_paths, rr_overlap_df)
 
-    print("====== Group integration visualization & markdown completed ======")
+    image_paths["Decoder Accuracy (Task1+Task3)"] = plot_decoder_chain_accuracy(task1_df, task3_df)
+    image_paths["Decoder Ablation (Task2)"] = plot_task2_ablation_summary(task2_df)
+    image_paths["Edge Ablation Robustness (Task4)"] = plot_task4_edge_ablation(task4_ablation_long_df)
+    image_paths["Edge Decile Enrichment (Task5)"] = plot_task5_decile_enrichment(task5_enrichment_long_df)
+    image_paths["Neuron Linking (Task6)"] = plot_task6_linking(task6_overlap_long_df, task6_selectivity_long_df)
+
+    generate_group_markdown(
+        master_df,
+        stat_results,
+        image_paths,
+        rr_overlap_df,
+        table_paths=table_paths,
+        decoder_chain_summary_df=decoder_chain_summary_df,
+        decoder_chain_stats_df=decoder_chain_stats_df,
+    )
+    print("====== Group integration (tables, stats, figures, markdown) completed ======")
+
+# ==========================================
+# 6. Main Execution
+# ==========================================
+if __name__ == "__main__":
+    run_group_integration()
