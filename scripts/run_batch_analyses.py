@@ -42,6 +42,12 @@ import pandas as pd
 import scipy.stats as stats
 
 
+# %%
+
+# 可视化需要显示
+import matplotlib.pyplot as plt
+plt.ion()  # 开启交互式绘图
+
 # %% [markdown]
 # <a id="sec-1"></a>
 # ## 1. Dataset and Output Paths
@@ -135,6 +141,24 @@ for idx, path in enumerate(data_paths):
         )
 
     nx_result = compute_network_metrics_by_class(segments_spi, labels_spi, neuron_pos_spi, do_bootstrap=False)
+
+
+    # %%
+
+    # heatmap
+    try:
+        import seaborn as sns
+        matrix = nx_result[1]['corr_matrix']
+        plt.figure(figsize=(10, 8))
+        sns.heatmap(matrix, cmap='viridis', cbar_kws={'label': 'Correlation Coefficient'})
+        plt.title('Correlation Matrix Heatmap')
+        plt.xlabel('Neurons')
+        plt.ylabel('Neurons')
+        plt.tight_layout()  
+        plt.savefig(os.path.join(fig_out_dir, "correlation_matrix_heatmap.png"))
+        plt.show()
+    except Exception as e:
+        print(f"Error occurred while plotting correlation matrix heatmap: {e}")
 
     # %% [markdown]
     # <a id="sec-31"></a>
@@ -719,7 +743,20 @@ for idx, path in enumerate(data_paths):
     plt.savefig(save_path, dpi=300)
     plt.show()
 
+    # plot heatmap of RSM
+    for name, rsm in rsm_data.items():
+        plt.figure(figsize=(6, 5))
+        sns.heatmap(rsm, cmap='viridis', vmin=-1, vmax=1) #cbar_kws={'label': 'Cosine Similarity'})
+        # 不要颜色条了，直接在标题里写熵值
+        
 
+        plt.title(f"RSM Heatmap - {name} (H={df_entropy[df_entropy['Stimulus']==name]['Entropy'].values[0]:.2f} bits)")
+        plt.xlabel("Trials")
+        plt.ylabel("Trials")
+        plt.tight_layout()
+        save_path = os.path.join(fig_out_dir, f"rsm_heatmap_{name}.png")
+        plt.savefig(save_path, dpi=300)
+        plt.show()
 
     # %% [markdown]
     # ## 6.1 Response Sparsity and Effective Dimensionality
@@ -1627,6 +1664,1562 @@ for idx, path in enumerate(data_paths):
         fig_dir=fig_out_dir,
     )
 
+
+
+    # %% [markdown]
+    # <a id="sec-11"></a>
+    # ## 11. Decoder Robustness (Task 1-2)
+    # 
+    # Generate fixed-window decoder confusion matrix + shuffled baseline (Task1), and Top 10% neuron ablation with random-drop control (Task2).
+    # 
+
+    # %%
+    import os
+    import numpy as np
+    import pandas as pd
+    import matplotlib.pyplot as plt
+
+    from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+    from sklearn.model_selection import StratifiedKFold
+    from sklearn.pipeline import Pipeline
+    from sklearn.preprocessing import RobustScaler
+    from sklearn.svm import SVC
+
+    # ===== lightweight Task1-2 based on existing analysis =====
+    n_splits = 3
+    shuffle_repeats = 40
+    random_drop_repeats = 20
+    ablation_ratio = 0.10
+    random_state = 42
+
+    y_all = np.asarray(labels_flo)
+    segments_all = np.asarray(segments_flo, dtype=float)
+
+    # keep stimulus classes only (exclude label 0 if present)
+    mask = y_all != 0
+    y = y_all[mask].astype(int)
+    segments_use = segments_all[mask]
+    n_time = segments_use.shape[2]
+
+    # choose decoder window from existing timepoint-accuracy result when available
+    if 'accuracies' in globals() and len(np.asarray(accuracies).ravel()) == n_time:
+        best_t = int(np.nanargmax(np.asarray(accuracies).ravel()))
+    else:
+        best_t = min(10, n_time - 1)
+    win_start = max(0, best_t - 1)
+    win_end = min(n_time, best_t + 2)
+    if win_end <= win_start:
+        win_start = max(0, best_t)
+        win_end = min(n_time, win_start + 1)
+
+    X = np.nanmean(segments_use[:, :, win_start:win_end], axis=2)
+
+    def build_model():
+        return Pipeline([
+            ('scaler', RobustScaler()),
+            ('svc', SVC(kernel='rbf', class_weight='balanced', C=1.0, gamma='scale')),
+        ])
+
+    def cv_accuracy_with_pred(X_mat, y_vec, n_splits=3, random_state=42):
+        cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+        y_pred = np.empty_like(y_vec)
+        fold_acc = []
+        for tr_idx, te_idx in cv.split(X_mat, y_vec):
+            model = build_model()
+            model.fit(X_mat[tr_idx], y_vec[tr_idx])
+            pred = model.predict(X_mat[te_idx])
+            y_pred[te_idx] = pred
+            fold_acc.append(float((pred == y_vec[te_idx]).mean()))
+        fold_acc = np.asarray(fold_acc, dtype=float)
+        return float(fold_acc.mean()), float(fold_acc.std(ddof=1)), y_pred
+
+    # ---------- Task1: decoder summary + confusion matrix ----------
+    full_acc, full_std, y_pred = cv_accuracy_with_pred(X, y, n_splits=n_splits, random_state=random_state)
+
+    rng = np.random.default_rng(random_state)
+    shuffle_acc = []
+    for rep in range(shuffle_repeats):
+        y_shuf = rng.permutation(y)
+        acc_shuf, _, _ = cv_accuracy_with_pred(
+            X, y_shuf, n_splits=n_splits, random_state=random_state + 100 + rep
+        )
+        shuffle_acc.append(acc_shuf)
+    shuffle_acc = np.asarray(shuffle_acc, dtype=float)
+
+    classes = np.sort(np.unique(y))
+    class_names = [label_names.get(int(c), str(c)) if 'label_names' in globals() else str(c) for c in classes]
+    cm_norm = confusion_matrix(y, y_pred, labels=classes, normalize='true')
+    cm_raw = confusion_matrix(y, y_pred, labels=classes, normalize=None)
+
+    fig, ax = plt.subplots(figsize=(6.0, 5.0), dpi=180)
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm_norm, display_labels=class_names)
+    disp.plot(ax=ax, cmap='Blues', colorbar=True, values_format='.2f')
+    ax.set_title(
+        f'Task1 Decoder Confusion Matrix (window {win_start}:{win_end})\\n'
+        f'Acc={full_acc:.3f}±{full_std:.3f} | Shuffle={shuffle_acc.mean():.3f}±{shuffle_acc.std(ddof=1):.3f}'
+    )
+    fig.tight_layout()
+    task1_fig = os.path.join(fig_out_dir, 'decoder_confusion_matrix.png')
+    fig.savefig(task1_fig, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+
+    task1_summary = pd.DataFrame([
+        {
+            'window_start': int(win_start),
+            'window_end': int(win_end),
+            'n_trials': int(X.shape[0]),
+            'n_neurons': int(X.shape[1]),
+            'n_splits': int(n_splits),
+            'accuracy_mean': float(full_acc),
+            'accuracy_std': float(full_std),
+            'shuffle_accuracy_mean': float(shuffle_acc.mean()),
+            'shuffle_accuracy_std': float(shuffle_acc.std(ddof=1)),
+            'accuracy_minus_shuffle': float(full_acc - shuffle_acc.mean()),
+        }
+    ])
+    for idx, cname in enumerate(class_names):
+        task1_summary[f'recall_{cname}'] = float(cm_norm[idx, idx])
+    task1_csv = os.path.join(data_out_dir, 'decoder_summary.csv')
+    task1_summary.to_csv(task1_csv, index=False)
+    pd.DataFrame(cm_raw, index=class_names, columns=class_names).to_csv(
+        os.path.join(data_out_dir, 'decoder_confusion_matrix.csv')
+    )
+
+    # ---------- Task2: Top10% ablation + random-drop control ----------
+    n_neurons = X.shape[1]
+    n_remove = max(1, int(np.ceil(n_neurons * ablation_ratio)))
+    neuron_mean_resp = np.nanmean(X, axis=0)
+    top_idx = np.argsort(neuron_mean_resp)[::-1][:n_remove]
+
+    keep_mask = np.ones(n_neurons, dtype=bool)
+    keep_mask[top_idx] = False
+    X_ablate = X[:, keep_mask]
+    ablate_acc, ablate_std, _ = cv_accuracy_with_pred(
+        X_ablate, y, n_splits=n_splits, random_state=random_state + 500
+    )
+
+    rand_acc = []
+    for rep in range(random_drop_repeats):
+        drop_idx = rng.choice(n_neurons, size=n_remove, replace=False)
+        keep_rand = np.ones(n_neurons, dtype=bool)
+        keep_rand[drop_idx] = False
+        acc_rand, _, _ = cv_accuracy_with_pred(
+            X[:, keep_rand], y, n_splits=n_splits, random_state=random_state + 800 + rep
+        )
+        rand_acc.append(acc_rand)
+    rand_acc = np.asarray(rand_acc, dtype=float)
+
+    task2_summary = pd.DataFrame([
+        {
+            'window_start': int(win_start),
+            'window_end': int(win_end),
+            'n_trials': int(X.shape[0]),
+            'n_neurons_total': int(n_neurons),
+            'n_neurons_removed': int(n_remove),
+            'removed_ratio': float(n_remove / n_neurons),
+            'full_accuracy_mean': float(full_acc),
+            'full_accuracy_std': float(full_std),
+            'top10_ablation_accuracy_mean': float(ablate_acc),
+            'top10_ablation_accuracy_std': float(ablate_std),
+            'random_drop_mean_accuracy': float(rand_acc.mean()),
+            'random_drop_std_accuracy': float(rand_acc.std(ddof=1)),
+            'delta_full_minus_top10': float(full_acc - ablate_acc),
+            'delta_top10_minus_random_mean': float(ablate_acc - rand_acc.mean()),
+            'ablation_rank_in_random': float((rand_acc <= ablate_acc).mean()),
+        }
+    ])
+    task2_csv = os.path.join(data_out_dir, 'decoder_ablation_summary.csv')
+    task2_summary.to_csv(task2_csv, index=False)
+    pd.DataFrame({'repeat_idx': np.arange(rand_acc.size), 'accuracy_mean': rand_acc}).to_csv(
+        os.path.join(data_out_dir, 'decoder_random_drop_repeats.csv'),
+        index=False
+    )
+
+    fig, ax = plt.subplots(figsize=(7.2, 4.8), dpi=180)
+    labels_bar = ['Full model', 'Top10% ablation', 'Random drop\\n(mean±sd)']
+    means = [full_acc, ablate_acc, float(rand_acc.mean())]
+    errs = [full_std, ablate_std, float(rand_acc.std(ddof=1))]
+    colors = ['#4C78A8', '#F58518', '#54A24B']
+    x = np.arange(3)
+    ax.bar(x, means, yerr=errs, color=colors, alpha=0.85, capsize=4, edgecolor='#333333')
+    jitter = rng.uniform(-0.14, 0.14, size=rand_acc.size)
+    ax.scatter(np.full(rand_acc.size, x[2]) + jitter, rand_acc, s=18, alpha=0.55, color='#2E7D32')
+    chance = 1.0 / classes.size
+    ax.axhline(chance, color='#777777', linestyle='--', linewidth=1.2, label=f'Chance={chance:.2f}')
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels_bar)
+    ax.set_ylim(0, 1.0)
+    ax.set_ylabel('Cross-validated accuracy')
+    ax.set_title(
+        f'Task2 Top10% Neuron Ablation (random repeats={random_drop_repeats})\\n'
+        f'Δ(full-top10)={full_acc - ablate_acc:.3f} | Δ(top10-rand)={ablate_acc - rand_acc.mean():.3f}'
+    )
+    ax.grid(axis='y', linestyle='--', alpha=0.25)
+    ax.legend(frameon=False, loc='lower right')
+    fig.tight_layout()
+    task2_fig = os.path.join(fig_out_dir, 'decoder_ablation_top10.png')
+    fig.savefig(task2_fig, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+
+    decoder_task12_outputs = {
+        'decoder_summary_csv': task1_csv,
+        'decoder_confusion_fig': task1_fig,
+        'decoder_ablation_summary_csv': task2_csv,
+        'decoder_ablation_fig': task2_fig,
+    }
+    print('[*] Task1 summary:', task1_csv)
+    print('[*] Task1 confusion fig:', task1_fig)
+    print('[*] Task2 summary:', task2_csv)
+    print('[*] Task2 ablation fig:', task2_fig)
+    decoder_task12_outputs
+
+
+    # %% [markdown]
+    # 
+    # <a id="sec-12"></a>
+    # ## 12. FC Decoder Chain (Tasks 3-6)
+    # 
+    # This section is organized as Task3 (FC decoder), Task4 (robust edge importance + projection), Task5 (decile/regime enrichment), and Task6 (decoder-important neurons linked to RR overlap/selectivity).
+    # 
+
+    # %% [markdown]
+    # ### 12.1 Task3: FC Matrix Decoder
+    # 
+
+    # %%
+    import os
+    import numpy as np
+    import pandas as pd
+    import matplotlib.pyplot as plt
+
+    from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+    from sklearn.model_selection import StratifiedKFold
+    from sklearn.pipeline import Pipeline
+    from sklearn.svm import SVC, LinearSVC
+    from sklearn.decomposition import TruncatedSVD
+    from scipy.stats import hypergeom
+
+    # ===== Task3 config (lightweight) =====
+    fc_window = (10, 30)  # response window for FC construction
+    fc_n_splits = 3
+    fc_shuffle_repeats = 30
+    fc_max_components = 40
+    fc_random_state = 123
+    fc_use_rr_union = True
+
+
+    def _balanced_indices(y_vec, random_state=123):
+        """Downsample to balanced class counts."""
+        rng_local = np.random.default_rng(random_state)
+        classes_local = np.sort(np.unique(y_vec))
+        min_count = min(int((y_vec == c).sum()) for c in classes_local)
+        keep = []
+        for c in classes_local:
+            idx_c = np.where(y_vec == c)[0]
+            keep.extend(rng_local.choice(idx_c, size=min_count, replace=False).tolist())
+        return np.asarray(sorted(keep), dtype=int)
+
+
+    def _trial_fc_upper_triangle(trial_neuron_time):
+        """trial_neuron_time: (n_neurons, n_time) -> upper-triangle FC vector."""
+        C = np.corrcoef(trial_neuron_time)
+        C = np.nan_to_num(C, nan=0.0, posinf=0.0, neginf=0.0)
+        np.fill_diagonal(C, 1.0)
+        tri = np.triu_indices(C.shape[0], k=1)
+        return C[tri]
+
+
+    def _fc_model(n_components, random_state=123):
+        """SVD (dim reduction) + SVC classifier."""
+        return Pipeline([
+            ('svd', TruncatedSVD(n_components=n_components, random_state=random_state)),
+            ('svc', SVC(kernel='rbf', class_weight='balanced', C=1.0, gamma='scale')),
+        ])
+
+
+    def _fc_cv_with_pred(X_mat, y_vec, n_components, n_splits=3, random_state=123):
+        cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+        y_pred = np.empty_like(y_vec)
+        fold_acc = []
+        for fold_i, (tr_idx, te_idx) in enumerate(cv.split(X_mat, y_vec)):
+            model = _fc_model(n_components=n_components, random_state=random_state + fold_i)
+            model.fit(X_mat[tr_idx], y_vec[tr_idx])
+            pred = model.predict(X_mat[te_idx])
+            y_pred[te_idx] = pred
+            fold_acc.append(float((pred == y_vec[te_idx]).mean()))
+        fold_acc = np.asarray(fold_acc, dtype=float)
+        return float(fold_acc.mean()), float(fold_acc.std(ddof=1)), y_pred
+
+
+    # ---------- 1) Prepare balanced spike trials ----------
+    segments_fc_all = np.asarray(segments_spi, dtype=float)
+    labels_fc_all = np.asarray(labels_spi).astype(int)
+    valid_mask = labels_fc_all != 0
+    segments_fc_valid = segments_fc_all[valid_mask]
+    labels_fc_valid = labels_fc_all[valid_mask]
+
+    keep_idx = _balanced_indices(labels_fc_valid, random_state=fc_random_state)
+    segments_fc = segments_fc_valid[keep_idx]
+    y_fc = labels_fc_valid[keep_idx]
+
+    # optional neuron subset: RR union (if available)
+    if fc_use_rr_union and 'rr_union' in globals() and len(rr_union) > 1:
+        rr_idx = np.asarray(sorted([i for i in rr_union if i < segments_fc.shape[1]]), dtype=int)
+        if rr_idx.size >= 5:
+            segments_fc = segments_fc[:, rr_idx, :]
+            fc_neuron_mode = 'rr_union'
+        else:
+            rr_idx = np.arange(segments_fc.shape[1], dtype=int)
+            fc_neuron_mode = 'all_neurons_fallback'
+    else:
+        rr_idx = np.arange(segments_fc.shape[1], dtype=int)
+        fc_neuron_mode = 'all_neurons'
+
+    n_time_fc = segments_fc.shape[2]
+    fc_start = max(0, min(fc_window[0], n_time_fc - 1))
+    fc_end = max(fc_start + 1, min(fc_window[1], n_time_fc))
+
+    # ---------- 2) Build trial-level FC features ----------
+    X_fc_list = []
+    for t_idx in range(segments_fc.shape[0]):
+        trial_nt = segments_fc[t_idx, :, fc_start:fc_end]
+        X_fc_list.append(_trial_fc_upper_triangle(trial_nt))
+    X_fc = np.vstack(X_fc_list)
+
+    # Fisher-z transform to stabilize correlation feature distribution
+    X_fc = np.clip(X_fc, -0.999999, 0.999999)
+    X_fc = np.arctanh(X_fc)
+
+    n_samples_fc, n_features_fc = X_fc.shape
+    n_components_fc = int(min(fc_max_components, n_samples_fc - 1, n_features_fc - 1))
+    if n_components_fc < 2:
+        raise ValueError(f'n_components too small: {n_components_fc}. Check trial/neuron counts.')
+
+    # ---------- 3) FC decoder + shuffled baseline ----------
+    fc_acc, fc_std, y_fc_pred = _fc_cv_with_pred(
+        X_fc,
+        y_fc,
+        n_components=n_components_fc,
+        n_splits=fc_n_splits,
+        random_state=fc_random_state,
+    )
+
+    rng_fc = np.random.default_rng(fc_random_state)
+    fc_shuffle_acc = []
+    for rep in range(fc_shuffle_repeats):
+        y_fc_shuf = rng_fc.permutation(y_fc)
+        rep_acc, _, _ = _fc_cv_with_pred(
+            X_fc,
+            y_fc_shuf,
+            n_components=n_components_fc,
+            n_splits=fc_n_splits,
+            random_state=fc_random_state + 200 + rep,
+        )
+        fc_shuffle_acc.append(rep_acc)
+    fc_shuffle_acc = np.asarray(fc_shuffle_acc, dtype=float)
+
+    fc_classes = np.sort(np.unique(y_fc))
+    fc_class_names = [label_names.get(int(c), str(c)) if 'label_names' in globals() else str(c) for c in fc_classes]
+    fc_cm_norm = confusion_matrix(y_fc, y_fc_pred, labels=fc_classes, normalize='true')
+    fc_cm_raw = confusion_matrix(y_fc, y_fc_pred, labels=fc_classes, normalize=None)
+
+    fig, ax = plt.subplots(figsize=(6.2, 5.1), dpi=180)
+    disp = ConfusionMatrixDisplay(confusion_matrix=fc_cm_norm, display_labels=fc_class_names)
+    disp.plot(ax=ax, cmap='Purples', colorbar=True, values_format='.2f')
+    ax.set_title(
+        f'Task3 FC Decoder (SVD→SVC, n_comp={n_components_fc})\\n'
+        f'Acc={fc_acc:.3f}±{fc_std:.3f} | Shuffle={fc_shuffle_acc.mean():.3f}±{fc_shuffle_acc.std(ddof=1):.3f}'
+    )
+    fig.tight_layout()
+    fc_fig_path = os.path.join(fig_out_dir, 'fc_decoder_confusion_matrix.png')
+    fig.savefig(fc_fig_path, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+
+    # ---------- 4) Export summary ----------
+    activity_acc_ref = np.nan
+    if 'task1_summary' in globals() and isinstance(task1_summary, pd.DataFrame) and len(task1_summary) > 0:
+        activity_acc_ref = float(task1_summary['accuracy_mean'].iloc[0])
+
+    fc_summary = pd.DataFrame([
+        {
+            'window_start': int(fc_start),
+            'window_end': int(fc_end),
+            'n_trials': int(n_samples_fc),
+            'n_neurons_used': int(segments_fc.shape[1]),
+            'neuron_mode': fc_neuron_mode,
+            'n_features_fc': int(n_features_fc),
+            'n_components_svd': int(n_components_fc),
+            'n_splits': int(fc_n_splits),
+            'accuracy_mean': float(fc_acc),
+            'accuracy_std': float(fc_std),
+            'shuffle_accuracy_mean': float(fc_shuffle_acc.mean()),
+            'shuffle_accuracy_std': float(fc_shuffle_acc.std(ddof=1)),
+            'accuracy_minus_shuffle': float(fc_acc - fc_shuffle_acc.mean()),
+            'activity_decoder_accuracy_ref': float(activity_acc_ref),
+            'fc_minus_activity_ref': float(fc_acc - activity_acc_ref) if np.isfinite(activity_acc_ref) else np.nan,
+        }
+    ])
+    for idx, cname in enumerate(fc_class_names):
+        fc_summary[f'recall_{cname}'] = float(fc_cm_norm[idx, idx])
+
+    fc_summary_csv = os.path.join(data_out_dir, 'fc_decoder_summary.csv')
+    fc_summary.to_csv(fc_summary_csv, index=False)
+    pd.DataFrame(fc_cm_raw, index=fc_class_names, columns=fc_class_names).to_csv(
+        os.path.join(data_out_dir, 'fc_decoder_confusion_matrix.csv')
+    )
+    pd.DataFrame({'repeat_idx': np.arange(fc_shuffle_acc.size), 'accuracy_mean': fc_shuffle_acc}).to_csv(
+        os.path.join(data_out_dir, 'fc_decoder_shuffle_repeats.csv'),
+        index=False
+    )
+
+
+    # %%
+    from IPython.display import Markdown, display
+
+    activity_delta = fc_acc - activity_acc_ref if np.isfinite(activity_acc_ref) else np.nan
+    lines = [
+        "### Task3 Result Snapshot",
+        f"- FC decoder CV accuracy: **{fc_acc:.4f} +/- {fc_std:.4f}**",
+        f"- Shuffle baseline: **{float(fc_shuffle_acc.mean()):.4f} +/- {float(fc_shuffle_acc.std(ddof=1)):.4f}**",
+        f"- Delta (FC - shuffle): **{fc_acc - float(fc_shuffle_acc.mean()):.4f}**",
+        f"- Delta (FC - activity reference): **{activity_delta:.4f}**",
+        f"- Summary table: `{fc_summary_csv}`",
+        f"- Confusion matrix figure: `{fc_fig_path}`",
+    ]
+    display(Markdown('\\n'.join(lines)))
+
+
+    # %% [markdown]
+    # ### 12.2 Task4: Robust Importance and Projection to Connection Levels
+    # 
+
+    # %%
+    # ---------- 5) Task4: SVD-component stability + ablation ----------
+    task4_stability_repeats = 25
+    task4_subsample_ratio = 0.80
+    task4_topk_components = min(10, n_components_fc)
+    task4_ablation_topk = min(10, n_components_fc)
+
+    svd_ref = TruncatedSVD(n_components=n_components_fc, random_state=fc_random_state + 999)
+    Z_fc = svd_ref.fit_transform(X_fc)
+
+    def _linear_cv_acc(Z_mat, y_vec, n_splits=3, random_state=123, drop_components=None):
+        cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+        fold_acc = []
+        for fold_i, (tr_idx, te_idx) in enumerate(cv.split(Z_mat, y_vec)):
+            X_tr = Z_mat[tr_idx].copy()
+            X_te = Z_mat[te_idx].copy()
+            if drop_components is not None and len(drop_components) > 0:
+                X_tr[:, drop_components] = 0.0
+                X_te[:, drop_components] = 0.0
+            model = LinearSVC(
+                C=1.0,
+                class_weight='balanced',
+                dual='auto',
+                max_iter=5000,
+                random_state=random_state + fold_i,
+            )
+            model.fit(X_tr, y_vec[tr_idx])
+            pred = model.predict(X_te)
+            fold_acc.append(float((pred == y_vec[te_idx]).mean()))
+        fold_acc = np.asarray(fold_acc, dtype=float)
+        return float(fold_acc.mean()), float(fold_acc.std(ddof=1))
+
+    def _stratified_subsample_idx(y_vec, ratio, rng_obj):
+        keep = []
+        for c in np.sort(np.unique(y_vec)):
+            idx_c = np.where(y_vec == c)[0]
+            n_keep_c = max(1, int(np.floor(idx_c.size * ratio)))
+            keep.extend(rng_obj.choice(idx_c, size=n_keep_c, replace=False).tolist())
+        return np.asarray(sorted(keep), dtype=int)
+
+    rng_task4 = np.random.default_rng(fc_random_state + 4000)
+    component_select_count = np.zeros(n_components_fc, dtype=int)
+    component_abscoef_sum = np.zeros(n_components_fc, dtype=float)
+
+    for rep in range(task4_stability_repeats):
+        sub_idx = _stratified_subsample_idx(y_fc, task4_subsample_ratio, rng_task4)
+        X_sub = Z_fc[sub_idx]
+        y_sub = y_fc[sub_idx]
+
+        model = LinearSVC(
+            C=1.0,
+            class_weight='balanced',
+            dual='auto',
+            max_iter=5000,
+            random_state=fc_random_state + 5000 + rep,
+        )
+        model.fit(X_sub, y_sub)
+        coef_abs = np.abs(model.coef_)
+        if coef_abs.ndim == 1:
+            comp_score = coef_abs
+        else:
+            comp_score = coef_abs.mean(axis=0)
+
+        component_abscoef_sum += comp_score
+        top_idx_rep = np.argsort(comp_score)[::-1][:task4_topk_components]
+        component_select_count[top_idx_rep] += 1
+
+    selection_freq = component_select_count / task4_stability_repeats
+    mean_abs_coef = component_abscoef_sum / task4_stability_repeats
+
+    stability_df = pd.DataFrame(
+        {
+            'component_idx': np.arange(n_components_fc, dtype=int),
+            'selection_frequency': selection_freq,
+            'mean_abs_coef': mean_abs_coef,
+        }
+    ).sort_values(['selection_frequency', 'mean_abs_coef'], ascending=False, ignore_index=True)
+    stability_csv_path = os.path.join(data_out_dir, 'fc_component_stability_selection.csv')
+    stability_df.to_csv(stability_csv_path, index=False)
+
+    linear_base_acc, linear_base_std = _linear_cv_acc(
+        Z_fc,
+        y_fc,
+        n_splits=fc_n_splits,
+        random_state=fc_random_state + 6000,
+        drop_components=None,
+    )
+
+    top_components = stability_df['component_idx'].to_numpy(dtype=int)[:task4_ablation_topk]
+    ablation_records = []
+    for comp_idx in top_components:
+        drop_acc, drop_std = _linear_cv_acc(
+            Z_fc,
+            y_fc,
+            n_splits=fc_n_splits,
+            random_state=fc_random_state + 6000,
+            drop_components=[int(comp_idx)],
+        )
+        freq_now = float(selection_freq[int(comp_idx)])
+        coef_now = float(mean_abs_coef[int(comp_idx)])
+        ablation_records.append(
+            {
+                'component_idx': int(comp_idx),
+                'base_accuracy_mean': float(linear_base_acc),
+                'base_accuracy_std': float(linear_base_std),
+                'ablation_accuracy_mean': float(drop_acc),
+                'ablation_accuracy_std': float(drop_std),
+                'delta_vs_base': float(linear_base_acc - drop_acc),
+                'selection_frequency': freq_now,
+                'mean_abs_coef': coef_now,
+            }
+        )
+
+    ablation_df = pd.DataFrame(ablation_records).sort_values(
+        'delta_vs_base', ascending=False, ignore_index=True
+    )
+    ablation_csv_path = os.path.join(data_out_dir, 'fc_component_ablation_delta_acc.csv')
+    ablation_df.to_csv(ablation_csv_path, index=False)
+
+    top_freq_plot = stability_df.head(task4_topk_components).iloc[::-1]
+    top_drop_plot = ablation_df.head(task4_ablation_topk).iloc[::-1]
+
+    fig, axes = plt.subplots(1, 2, figsize=(11.2, 4.6), dpi=180)
+    axes[0].barh(
+        [f'PC{int(i)}' for i in top_freq_plot['component_idx']],
+        top_freq_plot['selection_frequency'],
+        color='#4C78A8',
+        alpha=0.9,
+    )
+    axes[0].set_xlim(0, 1.0)
+    axes[0].set_xlabel('Selection frequency')
+    axes[0].set_title(f'Task4 Stability Top-{task4_topk_components}')
+    axes[0].grid(axis='x', linestyle='--', alpha=0.25)
+
+    axes[1].barh(
+        [f'PC{int(i)}' for i in top_drop_plot['component_idx']],
+        top_drop_plot['delta_vs_base'],
+        color='#F58518',
+        alpha=0.9,
+    )
+    axes[1].axvline(0.0, color='#666666', linewidth=1.0)
+    axes[1].set_xlabel('Accuracy drop after single-component ablation')
+    axes[1].set_title(f'Task4 Ablation Top-{task4_ablation_topk}')
+    axes[1].grid(axis='x', linestyle='--', alpha=0.25)
+
+    fig.tight_layout()
+    task4_fig_path = os.path.join(fig_out_dir, 'fc_component_importance_task4.png')
+    fig.savefig(task4_fig_path, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+
+
+    # %%
+    # ---------- 6) Task4 projection back to connection hierarchy ----------
+    task4_projection_top_edges = min(500, n_features_fc)
+
+    def _depth_tertile_labels(depth_vals):
+        q_low, q_high = np.quantile(depth_vals, [1.0 / 3.0, 2.0 / 3.0])
+        out = np.empty(depth_vals.shape[0], dtype=object)
+        out[depth_vals <= q_low] = 'DepthLow'
+        out[(depth_vals > q_low) & (depth_vals <= q_high)] = 'DepthMid'
+        out[depth_vals > q_high] = 'DepthHigh'
+        return out
+
+    n_neurons_fc = int(segments_fc.shape[1])
+    tri_i, tri_j = np.triu_indices(n_neurons_fc, k=1)
+
+    proj_components = ablation_df['component_idx'].to_numpy(dtype=int)
+    proj_weights = ablation_df['delta_vs_base'].to_numpy(dtype=float)
+    if np.all(np.abs(proj_weights) < 1e-12):
+        proj_weights = ablation_df['selection_frequency'].to_numpy(dtype=float)
+
+    edge_importance_raw = np.zeros(n_features_fc, dtype=float)
+    for comp_idx, comp_w in zip(proj_components, proj_weights):
+        edge_importance_raw += float(abs(comp_w)) * np.abs(svd_ref.components_[int(comp_idx)])
+    edge_importance = edge_importance_raw / (edge_importance_raw.sum() + 1e-12)
+
+    edge_corr_mean = np.tanh(np.nanmean(X_fc, axis=0))
+    edge_order = np.argsort(edge_corr_mean)
+    strength_decile = np.empty(n_features_fc, dtype=int)
+    strength_decile[edge_order] = (np.arange(n_features_fc, dtype=int) * 10 // n_features_fc) + 1
+
+    if 'layer_labels_spi' in globals():
+        layer_arr = np.asarray(layer_labels_spi)
+        if layer_arr.ndim == 1 and layer_arr.shape[0] > int(rr_idx.max()):
+            layer_labels_fc = layer_arr[rr_idx].astype(str)
+            layer_source = 'layer_labels_spi'
+        elif 'neuron_pos_spi' in globals():
+            pos_arr = np.asarray(neuron_pos_spi, dtype=float)
+            if pos_arr.ndim == 2 and pos_arr.shape[1] > int(rr_idx.max()):
+                layer_labels_fc = _depth_tertile_labels(pos_arr[0, rr_idx])
+                layer_source = 'depth_tertile_fallback_axis0'
+            else:
+                layer_labels_fc = np.array(['Unknown'] * n_neurons_fc, dtype=object)
+                layer_source = 'unknown'
+        else:
+            layer_labels_fc = np.array(['Unknown'] * n_neurons_fc, dtype=object)
+            layer_source = 'unknown'
+    elif 'neuron_pos_spi' in globals():
+        pos_arr = np.asarray(neuron_pos_spi, dtype=float)
+        if pos_arr.ndim == 2 and pos_arr.shape[1] > int(rr_idx.max()):
+            layer_labels_fc = _depth_tertile_labels(pos_arr[0, rr_idx])
+            layer_source = 'depth_tertile_from_neuron_pos_spi_axis0'
+        else:
+            layer_labels_fc = np.array(['Unknown'] * n_neurons_fc, dtype=object)
+            layer_source = 'unknown'
+    else:
+        layer_labels_fc = np.array(['Unknown'] * n_neurons_fc, dtype=object)
+        layer_source = 'unknown'
+
+    layer_labels_fc = np.asarray(layer_labels_fc, dtype=str)
+    layer_names = pd.Index(layer_labels_fc).unique().tolist()
+    layer_to_code = {name: idx for idx, name in enumerate(layer_names)}
+    layer_codes = np.asarray([layer_to_code[name] for name in layer_labels_fc], dtype=int)
+
+    li = layer_codes[tri_i]
+    lj = layer_codes[tri_j]
+    pair_a = np.minimum(li, lj)
+    pair_b = np.maximum(li, lj)
+    n_layers = len(layer_names)
+    pair_code = pair_a * n_layers + pair_b
+
+    decile_rows = []
+    for d in range(1, 11):
+        mask_d = strength_decile == d
+        decile_rows.append(
+            {
+                'strength_decile': int(d),
+                'n_edges': int(mask_d.sum()),
+                'importance_sum': float(edge_importance[mask_d].sum()),
+                'importance_mean': float(edge_importance[mask_d].mean()),
+                'corr_mean': float(edge_corr_mean[mask_d].mean()),
+            }
+        )
+    decile_df = pd.DataFrame(decile_rows)
+    decile_csv_path = os.path.join(data_out_dir, 'fc_projection_by_strength_decile_task4.csv')
+    decile_df.to_csv(decile_csv_path, index=False)
+
+    strong_tail = decile_df.loc[decile_df['strength_decile'] == 10].iloc[0]
+    weak_tail = decile_df.loc[decile_df['strength_decile'] == 1].iloc[0]
+    strong_weak_match_df = pd.DataFrame(
+        [
+            {
+                'importance_strong_tail_decile10': float(strong_tail['importance_sum']),
+                'importance_weak_tail_decile1': float(weak_tail['importance_sum']),
+                'importance_gap_d10_minus_d1': float(strong_tail['importance_sum'] - weak_tail['importance_sum']),
+                'corr_mean_decile10': float(strong_tail['corr_mean']),
+                'corr_mean_decile1': float(weak_tail['corr_mean']),
+            }
+        ]
+    )
+    strong_weak_csv_path = os.path.join(data_out_dir, 'fc_projection_strong_weak_match_task4.csv')
+    strong_weak_match_df.to_csv(strong_weak_csv_path, index=False)
+
+    pair_rows = []
+    for code in np.unique(pair_code):
+        mask_p = pair_code == code
+        a = int(code // n_layers)
+        b = int(code % n_layers)
+        pair_rows.append(
+            {
+                'layer_pair': f'{layer_names[a]}--{layer_names[b]}',
+                'layer_a': layer_names[a],
+                'layer_b': layer_names[b],
+                'n_edges': int(mask_p.sum()),
+                'importance_sum': float(edge_importance[mask_p].sum()),
+                'importance_mean': float(edge_importance[mask_p].mean()),
+                'corr_mean': float(edge_corr_mean[mask_p].mean()),
+                'layer_source': layer_source,
+            }
+        )
+    depth_pair_df = pd.DataFrame(pair_rows).sort_values('importance_sum', ascending=False, ignore_index=True)
+    depth_pair_csv_path = os.path.join(data_out_dir, 'fc_projection_by_layer_pair_task4.csv')
+    depth_pair_df.to_csv(depth_pair_csv_path, index=False)
+
+    top_edge_idx = np.argsort(edge_importance)[::-1][:task4_projection_top_edges]
+    top_i_local = tri_i[top_edge_idx]
+    top_j_local = tri_j[top_edge_idx]
+    top_i_global = rr_idx[top_i_local]
+    top_j_global = rr_idx[top_j_local]
+    top_pair_labels = np.asarray(
+        [
+            '--'.join(sorted((layer_labels_fc[i], layer_labels_fc[j])))
+            for i, j in zip(top_i_local, top_j_local)
+        ],
+        dtype=object,
+    )
+
+    top_edges_df = pd.DataFrame(
+        {
+            'rank': np.arange(1, top_edge_idx.size + 1, dtype=int),
+            'edge_idx': top_edge_idx.astype(int),
+            'neuron_i_local': top_i_local.astype(int),
+            'neuron_j_local': top_j_local.astype(int),
+            'neuron_i_global': top_i_global.astype(int),
+            'neuron_j_global': top_j_global.astype(int),
+            'layer_i': layer_labels_fc[top_i_local],
+            'layer_j': layer_labels_fc[top_j_local],
+            'layer_pair': top_pair_labels,
+            'strength_decile': strength_decile[top_edge_idx].astype(int),
+            'corr_mean': edge_corr_mean[top_edge_idx],
+            'edge_importance': edge_importance[top_edge_idx],
+            'edge_importance_raw': edge_importance_raw[top_edge_idx],
+        }
+    )
+    top_edges_csv_path = os.path.join(data_out_dir, 'fc_projection_top_edges_task4.csv')
+    top_edges_df.to_csv(top_edges_csv_path, index=False)
+
+    depth_pair_plot = depth_pair_df.head(min(10, len(depth_pair_df))).iloc[::-1]
+    fig, axes = plt.subplots(1, 2, figsize=(12.0, 4.6), dpi=180)
+
+    axes[0].bar(decile_df['strength_decile'], decile_df['importance_sum'], color='#4C78A8', alpha=0.9)
+    axes[0].set_xlabel('Correlation strength decile (1=weak,10=strong)')
+    axes[0].set_ylabel('Projected importance sum')
+    axes[0].set_title('Task4 Projection to Strength Levels')
+    axes[0].set_xticks(np.arange(1, 11, 1))
+    axes[0].grid(axis='y', linestyle='--', alpha=0.25)
+
+    axes[1].barh(depth_pair_plot['layer_pair'], depth_pair_plot['importance_sum'], color='#72B7B2', alpha=0.9)
+    axes[1].set_xlabel('Projected importance sum')
+    axes[1].set_title('Task4 Projection to Layer Pairs (Top)')
+    axes[1].grid(axis='x', linestyle='--', alpha=0.25)
+
+    fig.tight_layout()
+    task4_proj_fig_path = os.path.join(fig_out_dir, 'fc_projection_levels_task4.png')
+    fig.savefig(task4_proj_fig_path, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+
+    # ---------- 6.1) Task4 edge-level outputs aligned with task list ----------
+    all_i_local = tri_i
+    all_j_local = tri_j
+    all_i_global = rr_idx[all_i_local]
+    all_j_global = rr_idx[all_j_local]
+    all_pair_labels = np.asarray(
+        [
+            '--'.join(sorted((layer_labels_fc[i], layer_labels_fc[j])))
+            for i, j in zip(all_i_local, all_j_local)
+        ],
+        dtype=object,
+    )
+
+    edge_stability_df = pd.DataFrame(
+        {
+            'edge_idx': np.arange(n_features_fc, dtype=int),
+            'neuron_i_local': all_i_local.astype(int),
+            'neuron_j_local': all_j_local.astype(int),
+            'neuron_i_global': all_i_global.astype(int),
+            'neuron_j_global': all_j_global.astype(int),
+            'layer_i': layer_labels_fc[all_i_local],
+            'layer_j': layer_labels_fc[all_j_local],
+            'layer_pair': all_pair_labels,
+            'strength_decile': strength_decile.astype(int),
+            'corr_mean': edge_corr_mean,
+            'edge_importance': edge_importance,
+            'edge_importance_raw': edge_importance_raw,
+        }
+    ).sort_values('edge_importance', ascending=False, ignore_index=True)
+    edge_stability_df.insert(0, 'rank', np.arange(1, edge_stability_df.shape[0] + 1, dtype=int))
+
+    edge_stability_csv_path = os.path.join(data_out_dir, 'fc_edge_importance_stability.csv')
+    edge_stability_df.to_csv(edge_stability_csv_path, index=False)
+
+
+    def _fc_cv_acc_edge_mask(X_mat, y_vec, drop_edge_idx=None, n_splits=3, random_state=123):
+        cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+        fold_acc = []
+        for fold_i, (tr_idx, te_idx) in enumerate(cv.split(X_mat, y_vec)):
+            X_tr = X_mat[tr_idx].copy()
+            X_te = X_mat[te_idx].copy()
+            if drop_edge_idx is not None and len(drop_edge_idx) > 0:
+                X_tr[:, drop_edge_idx] = 0.0
+                X_te[:, drop_edge_idx] = 0.0
+
+            pipe = Pipeline(
+                [
+                    ('svd', TruncatedSVD(n_components=n_components_fc, random_state=random_state + 100 + fold_i)),
+                    (
+                        'clf',
+                        LinearSVC(
+                            C=1.0,
+                            class_weight='balanced',
+                            dual='auto',
+                            max_iter=5000,
+                            random_state=random_state + 200 + fold_i,
+                        ),
+                    ),
+                ]
+            )
+            pipe.fit(X_tr, y_vec[tr_idx])
+            pred = pipe.predict(X_te)
+            fold_acc.append(float((pred == y_vec[te_idx]).mean()))
+
+        fold_acc = np.asarray(fold_acc, dtype=float)
+        return float(fold_acc.mean()), float(fold_acc.std(ddof=1))
+
+
+    task4_edge_ablation_fracs = [0.01, 0.03, 0.05]
+    task4_edge_ablation_random_repeats = 8
+    rng_task4_edge = np.random.default_rng(fc_random_state + 8000)
+
+    base_edge_acc, base_edge_std = _fc_cv_acc_edge_mask(
+        X_fc,
+        y_fc,
+        drop_edge_idx=None,
+        n_splits=fc_n_splits,
+        random_state=fc_random_state + 9000,
+    )
+
+    edge_rank_desc = np.argsort(edge_importance)[::-1]
+    edge_ablation_rows = []
+
+    for frac in task4_edge_ablation_fracs:
+        n_drop = int(max(1, np.ceil(n_features_fc * frac)))
+
+        top_drop_idx = edge_rank_desc[:n_drop]
+        top_acc, top_std = _fc_cv_acc_edge_mask(
+            X_fc,
+            y_fc,
+            drop_edge_idx=top_drop_idx,
+            n_splits=fc_n_splits,
+            random_state=fc_random_state + 9000,
+        )
+        edge_ablation_rows.append(
+            {
+                'ablation_type': 'top',
+                'drop_fraction': float(frac),
+                'n_edges_dropped': int(n_drop),
+                'repeat_idx': -1,
+                'base_accuracy_mean': float(base_edge_acc),
+                'base_accuracy_std': float(base_edge_std),
+                'accuracy_mean': float(top_acc),
+                'accuracy_std': float(top_std),
+                'delta_vs_base': float(base_edge_acc - top_acc),
+            }
+        )
+
+        for rep in range(task4_edge_ablation_random_repeats):
+            rnd_idx = rng_task4_edge.choice(n_features_fc, size=n_drop, replace=False)
+            rnd_acc, rnd_std = _fc_cv_acc_edge_mask(
+                X_fc,
+                y_fc,
+                drop_edge_idx=rnd_idx,
+                n_splits=fc_n_splits,
+                random_state=fc_random_state + 9000 + 50 + rep,
+            )
+            edge_ablation_rows.append(
+                {
+                    'ablation_type': 'random',
+                    'drop_fraction': float(frac),
+                    'n_edges_dropped': int(n_drop),
+                    'repeat_idx': int(rep),
+                    'base_accuracy_mean': float(base_edge_acc),
+                    'base_accuracy_std': float(base_edge_std),
+                    'accuracy_mean': float(rnd_acc),
+                    'accuracy_std': float(rnd_std),
+                    'delta_vs_base': float(base_edge_acc - rnd_acc),
+                }
+            )
+
+    edge_ablation_df = pd.DataFrame(edge_ablation_rows)
+    edge_ablation_csv_path = os.path.join(data_out_dir, 'fc_edge_ablation_delta_acc.csv')
+    edge_ablation_df.to_csv(edge_ablation_csv_path, index=False)
+
+    edge_ablation_plot_df = (
+        edge_ablation_df.groupby(['drop_fraction', 'n_edges_dropped', 'ablation_type'], as_index=False)
+        .agg(
+            mean_delta_vs_base=('delta_vs_base', 'mean'),
+            sem_delta_vs_base=(
+                'delta_vs_base',
+                lambda v: float(np.std(v, ddof=1) / np.sqrt(len(v))) if len(v) > 1 else np.nan,
+            ),
+        )
+        .sort_values(['drop_fraction', 'ablation_type'], ignore_index=True)
+    )
+
+    plot_top_edge = edge_ablation_plot_df[edge_ablation_plot_df['ablation_type'] == 'top'].copy()
+    plot_rand_edge = edge_ablation_plot_df[edge_ablation_plot_df['ablation_type'] == 'random'].copy()
+
+    fig, axes = plt.subplots(1, 3, figsize=(16.2, 4.8), dpi=180)
+
+    axes[0].barh(
+        [f'PC{int(i)}' for i in top_freq_plot['component_idx']],
+        top_freq_plot['selection_frequency'],
+        color='#4C78A8',
+        alpha=0.9,
+    )
+    axes[0].set_xlim(0, 1.0)
+    axes[0].set_xlabel('Selection frequency')
+    axes[0].set_title(f'Task4 Stability Top-{task4_topk_components}')
+    axes[0].grid(axis='x', linestyle='--', alpha=0.25)
+
+    axes[1].barh(
+        [f'PC{int(i)}' for i in top_drop_plot['component_idx']],
+        top_drop_plot['delta_vs_base'],
+        color='#F58518',
+        alpha=0.9,
+    )
+    axes[1].axvline(0.0, color='#666666', linewidth=1.0)
+    axes[1].set_xlabel('Accuracy drop after single-component ablation')
+    axes[1].set_title(f'Task4 Ablation Top-{task4_ablation_topk}')
+    axes[1].grid(axis='x', linestyle='--', alpha=0.25)
+
+    x3 = np.arange(plot_top_edge.shape[0])
+    axes[2].plot(
+        x3,
+        plot_top_edge['mean_delta_vs_base'].to_numpy(dtype=float),
+        marker='o',
+        linewidth=2.0,
+        color='#E45756',
+        label='Top edges',
+    )
+    axes[2].errorbar(
+        x3,
+        plot_rand_edge['mean_delta_vs_base'].to_numpy(dtype=float),
+        yerr=plot_rand_edge['sem_delta_vs_base'].to_numpy(dtype=float),
+        fmt='s--',
+        capsize=3,
+        color='#54A24B',
+        label='Random edges',
+    )
+    axes[2].set_xticks(x3)
+    axes[2].set_xticklabels([f"{int(100 * v)}%" for v in plot_top_edge['drop_fraction']])
+    axes[2].set_xlabel('Dropped edge fraction')
+    axes[2].set_ylabel('Accuracy drop vs baseline')
+    axes[2].set_title('Task4 Edge Ablation')
+    axes[2].grid(axis='y', linestyle='--', alpha=0.25)
+    axes[2].legend(frameon=False, fontsize=8)
+
+    fig.tight_layout()
+    task4_robust_fig_path = os.path.join(fig_out_dir, 'fc_importance_robustness.png')
+    fig.savefig(task4_robust_fig_path, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+
+    # Keep backward-compatible component-level artifacts, but expose edge-level files
+    # as the canonical Task4 outputs (matching task list naming).
+    component_stability_csv_path = stability_csv_path
+    component_ablation_csv_path = ablation_csv_path
+    component_task4_fig_path = task4_fig_path
+
+    stability_csv_path = edge_stability_csv_path
+    ablation_csv_path = edge_ablation_csv_path
+    task4_fig_path = task4_robust_fig_path
+
+
+    # %%
+    from IPython.display import Markdown, display
+
+    weak_sum = float(decile_df.loc[decile_df['strength_decile'].isin([1, 2]), 'importance_sum'].sum())
+    strong_sum = float(decile_df.loc[decile_df['strength_decile'].isin([9, 10]), 'importance_sum'].sum())
+    top_pair = str(depth_pair_df.iloc[0]['layer_pair']) if len(depth_pair_df) > 0 else 'NA'
+
+    top_drop_row = edge_ablation_df[edge_ablation_df['ablation_type'] == 'top'].sort_values('n_edges_dropped')
+    if len(top_drop_row) > 0:
+        top_drop_row = top_drop_row.iloc[-1]
+        n_drop = int(top_drop_row['n_edges_dropped'])
+        top_delta = float(top_drop_row['delta_vs_base'])
+        rand_ref = edge_ablation_df[
+            (edge_ablation_df['ablation_type'] == 'random')
+            & (edge_ablation_df['n_edges_dropped'] == n_drop)
+        ]
+        rand_delta = float(rand_ref['delta_vs_base'].mean()) if len(rand_ref) > 0 else np.nan
+    else:
+        n_drop, top_delta, rand_delta = 0, np.nan, np.nan
+
+    lines = [
+        "### Task4 Result Snapshot",
+        f"- Stable edge list: `{edge_stability_csv_path}` (n={len(edge_stability_df)})",
+        f"- Top projected layer pair: **{top_pair}**",
+        f"- Weak-tail importance (D1-D2): **{weak_sum:.4f}**; strong-tail (D9-D10): **{strong_sum:.4f}**",
+        f"- Edge ablation ({n_drop} edges): top-drop Delta acc **{top_delta:.4f}**, random-drop mean Delta acc **{rand_delta:.4f}**",
+        f"- Robustness figure: `{task4_robust_fig_path}`",
+        f"- Projection figure: `{task4_proj_fig_path}`",
+    ]
+    display(Markdown('\\n'.join(lines)))
+
+
+    # %% [markdown]
+    # ### 12.3 Task5: Important-Edge Enrichment Across Deciles/Regimes
+    # 
+
+    # %%
+    # ---------- 7) Task5: important-edge enrichment in deciles/regimes ----------
+    task5_important_frac = 0.10
+    task5_weak_deciles = [1, 2]
+    task5_strong_deciles = [9, 10]
+
+    n_total_edges = int(n_features_fc)
+    n_important_edges = int(max(1, np.ceil(n_total_edges * task5_important_frac)))
+    important_edge_idx = np.argsort(edge_importance)[::-1][:n_important_edges]
+    important_decile = strength_decile[important_edge_idx]
+
+    imp_i_local = tri_i[important_edge_idx]
+    imp_j_local = tri_j[important_edge_idx]
+    imp_i_global = rr_idx[imp_i_local]
+    imp_j_global = rr_idx[imp_j_local]
+    important_pair_labels = np.asarray(
+        [
+            '--'.join(sorted((layer_labels_fc[i], layer_labels_fc[j])))
+            for i, j in zip(imp_i_local, imp_j_local)
+        ],
+        dtype=object,
+    )
+    important_edge_map_df = pd.DataFrame(
+        {
+            'rank': np.arange(1, n_important_edges + 1, dtype=int),
+            'edge_idx': important_edge_idx.astype(int),
+            'neuron_i_local': imp_i_local.astype(int),
+            'neuron_j_local': imp_j_local.astype(int),
+            'neuron_i_global': imp_i_global.astype(int),
+            'neuron_j_global': imp_j_global.astype(int),
+            'layer_i': layer_labels_fc[imp_i_local],
+            'layer_j': layer_labels_fc[imp_j_local],
+            'layer_pair': important_pair_labels,
+            'strength_decile': strength_decile[important_edge_idx].astype(int),
+            'corr_mean': edge_corr_mean[important_edge_idx],
+            'edge_importance': edge_importance[important_edge_idx],
+            'edge_importance_raw': edge_importance_raw[important_edge_idx],
+        }
+    )
+    important_edge_map_csv_path = os.path.join(data_out_dir, 'fc_important_edge_decile_map_task5.csv')
+    important_edge_map_df.to_csv(important_edge_map_csv_path, index=False)
+
+    def _bh_fdr(pvals):
+        pvals = np.asarray(pvals, dtype=float)
+        n = int(pvals.size)
+        order = np.argsort(pvals)
+        ranked = pvals[order]
+        adj_ranked = np.empty(n, dtype=float)
+        prev = 1.0
+        for i in range(n - 1, -1, -1):
+            rank = i + 1
+            val = ranked[i] * n / rank
+            prev = min(prev, val)
+            adj_ranked[i] = min(prev, 1.0)
+        adj = np.empty(n, dtype=float)
+        adj[order] = adj_ranked
+        return adj
+
+    def _enrichment_row(level_type, level_name, level_mask):
+        M = int(n_total_edges)
+        N = int(n_important_edges)
+        K = int(level_mask.sum())
+        x = int(level_mask[important_edge_idx].sum())
+
+        expected_count = float(N * K / M)
+        observed_prop = float(x / N)
+        expected_prop = float(K / M)
+        enrichment_ratio = float(observed_prop / (expected_prop + 1e-12))
+        log2_enrichment = float(np.log2((observed_prop + 1e-12) / (expected_prop + 1e-12)))
+
+        p_over = float(hypergeom.sf(x - 1, M, K, N))
+        p_under = float(hypergeom.cdf(x, M, K, N))
+        p_two = float(min(1.0, 2.0 * min(p_over, p_under)))
+
+        return {
+            'level_type': level_type,
+            'level': level_name,
+            'observed_count': int(x),
+            'expected_count': expected_count,
+            'observed_prop': observed_prop,
+            'expected_prop': expected_prop,
+            'enrichment_ratio': enrichment_ratio,
+            'log2_enrichment': log2_enrichment,
+            'p_over': p_over,
+            'p_under': p_under,
+            'p_two_sided': p_two,
+            'n_important_edges': int(N),
+            'n_total_edges': int(M),
+        }
+
+    enrichment_rows = []
+    for d in range(1, 11):
+        mask_d = strength_decile == d
+        enrichment_rows.append(_enrichment_row('decile', f'D{d}', mask_d))
+
+    mask_weak = np.isin(strength_decile, task5_weak_deciles)
+    mask_strong = np.isin(strength_decile, task5_strong_deciles)
+    enrichment_rows.append(_enrichment_row('regime', 'WeakTail_D1D2', mask_weak))
+    enrichment_rows.append(_enrichment_row('regime', 'StrongTail_D9D10', mask_strong))
+
+    enrichment_df = pd.DataFrame(enrichment_rows)
+    decile_only_mask = enrichment_df['level_type'] == 'decile'
+    enrichment_df.loc[decile_only_mask, 'p_fdr_bh'] = _bh_fdr(
+        enrichment_df.loc[decile_only_mask, 'p_two_sided'].to_numpy(dtype=float)
+    )
+    enrichment_df.loc[~decile_only_mask, 'p_fdr_bh'] = np.nan
+
+    enrichment_csv_path = os.path.join(data_out_dir, 'fc_edge_decile_enrichment.csv')
+    enrichment_df.to_csv(enrichment_csv_path, index=False)
+
+    enrichment_plot_df = enrichment_df[enrichment_df['level_type'] == 'decile'].copy()
+    enrichment_plot_df['decile_idx'] = enrichment_plot_df['level'].str.replace('D', '', regex=False).astype(int)
+    enrichment_plot_df = enrichment_plot_df.sort_values('decile_idx', ignore_index=True)
+
+    fig, axes = plt.subplots(1, 2, figsize=(12.2, 4.6), dpi=180)
+
+    x = enrichment_plot_df['decile_idx'].to_numpy(dtype=int)
+    obs = enrichment_plot_df['observed_prop'].to_numpy(dtype=float)
+    exp = enrichment_plot_df['expected_prop'].to_numpy(dtype=float)
+    bar_w = 0.38
+
+    axes[0].bar(x - bar_w / 2, obs, width=bar_w, color='#4C78A8', alpha=0.9, label='Observed')
+    axes[0].bar(x + bar_w / 2, exp, width=bar_w, color='#B9CFE7', alpha=0.95, label='Expected')
+    axes[0].set_xlabel('Correlation decile (1=weak, 10=strong)')
+    axes[0].set_ylabel('Proportion in important-edge set')
+    axes[0].set_title('Task5 Observed vs Expected')
+    axes[0].set_xticks(np.arange(1, 11, 1))
+    axes[0].grid(axis='y', linestyle='--', alpha=0.25)
+    axes[0].legend(frameon=False)
+
+    log2_enr = enrichment_plot_df['log2_enrichment'].to_numpy(dtype=float)
+    colors = np.where(log2_enr >= 0, '#72B7B2', '#E45756')
+    axes[1].bar(x, log2_enr, color=colors, alpha=0.9)
+    axes[1].axhline(0.0, color='#666666', linewidth=1.0)
+    axes[1].set_xlabel('Correlation decile (1=weak, 10=strong)')
+    axes[1].set_ylabel('log2 enrichment (Observed / Expected)')
+    axes[1].set_title('Task5 Enrichment Effect Size')
+    axes[1].set_xticks(np.arange(1, 11, 1))
+    axes[1].grid(axis='y', linestyle='--', alpha=0.25)
+
+    for _, row in enrichment_plot_df.iterrows():
+        if float(row['p_fdr_bh']) < 0.05:
+            y = float(row['log2_enrichment'])
+            y_txt = y + (0.04 if y >= 0 else -0.08)
+            axes[1].text(int(row['decile_idx']), y_txt, '*', ha='center', va='center', fontsize=11)
+
+    fig.tight_layout()
+    enrichment_fig_path = os.path.join(fig_out_dir, 'fc_edge_decile_enrichment.png')
+    fig.savefig(enrichment_fig_path, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+
+
+    # %%
+    from IPython.display import Markdown, display
+
+    weak_row = enrichment_df[
+        (enrichment_df['level_type'] == 'regime') & (enrichment_df['level'] == 'WeakTail_D1D2')
+    ]
+    strong_row = enrichment_df[
+        (enrichment_df['level_type'] == 'regime') & (enrichment_df['level'] == 'StrongTail_D9D10')
+    ]
+    weak_log2 = float(weak_row['log2_enrichment'].iloc[0]) if len(weak_row) > 0 else np.nan
+    weak_p = float(weak_row['p_two_sided'].iloc[0]) if len(weak_row) > 0 else np.nan
+    strong_log2 = float(strong_row['log2_enrichment'].iloc[0]) if len(strong_row) > 0 else np.nan
+
+    decile_df_task5 = enrichment_df[enrichment_df['level_type'] == 'decile'].copy()
+    top_decile = decile_df_task5.sort_values('log2_enrichment', ascending=False).iloc[0] if len(decile_df_task5) > 0 else None
+    top_decile_txt = top_decile['level'] if top_decile is not None else 'NA'
+    top_decile_enr = float(top_decile['log2_enrichment']) if top_decile is not None else np.nan
+
+    lines = [
+        "### Task5 Result Snapshot",
+        f"- Important-edge map: `{important_edge_map_csv_path}`",
+        f"- Weak-tail enrichment log2(O/E): **{weak_log2:.4f}** (p={weak_p:.3g})",
+        f"- Strong-tail enrichment log2(O/E): **{strong_log2:.4f}**",
+        f"- Most enriched decile: **{top_decile_txt}** (log2 enrichment={top_decile_enr:.4f})",
+        f"- Enrichment table: `{enrichment_csv_path}`",
+        f"- Enrichment figure: `{enrichment_fig_path}`",
+    ]
+    display(Markdown('\\n'.join(lines)))
+
+
+    # %% [markdown]
+    # ### 12.4 Task6: Decoder-Important Neurons Linked to RR Overlap/Selectivity
+    # 
+
+    # %%
+    # ---------- 8) Task6: decoder-important neurons x RR overlap/selectivity ----------
+    task6_important_neuron_frac = 0.20
+    task6_selectivity_window = (10, 13)
+    task6_ablation_eval_per_category = 30
+
+    if 'rr_sets' in globals() and isinstance(rr_sets, dict) and len(rr_sets) > 0:
+        rr_sets_task6 = {int(k): set(map(int, v)) for k, v in rr_sets.items()}
+    elif 'rr_neurons_spi' in globals() and isinstance(rr_neurons_spi, dict) and len(rr_neurons_spi) > 0:
+        rr_sets_task6 = {int(k): set(map(int, v)) for k, v in rr_neurons_spi.items()}
+    else:
+        rr_sets_task6 = {}
+
+    class_ids_task6 = sorted(rr_sets_task6.keys())
+    if len(class_ids_task6) == 0:
+        class_ids_task6 = sorted(np.unique(y_fc).astype(int).tolist())
+        rr_sets_task6 = {int(c): set() for c in class_ids_task6}
+
+    n_neurons_fc = int(segments_fc.shape[1])
+    neuron_ids_global = rr_idx.copy().astype(int)
+
+    membership_mat = np.zeros((n_neurons_fc, len(class_ids_task6)), dtype=int)
+    for ci, cls in enumerate(class_ids_task6):
+        cls_set = rr_sets_task6.get(int(cls), set())
+        membership_mat[:, ci] = np.isin(neuron_ids_global, list(cls_set)).astype(int)
+    membership_count = membership_mat.sum(axis=1)
+
+    coarse_category = np.empty(n_neurons_fc, dtype=object)
+    detail_category = np.empty(n_neurons_fc, dtype=object)
+    preferred_rr_label = np.empty(n_neurons_fc, dtype=object)
+
+    for i in range(n_neurons_fc):
+        if membership_count[i] >= 2:
+            coarse_category[i] = 'Shared_Core'
+            detail_category[i] = 'Shared_Core'
+            preferred_rr_label[i] = 'Shared_Core'
+        elif membership_count[i] == 1:
+            ci = int(np.argmax(membership_mat[i]))
+            cls = int(class_ids_task6[ci])
+            cls_name = label_names.get(cls, f'Class{cls}') if 'label_names' in globals() else f'Class{cls}'
+            coarse_category[i] = 'Condition_Biased'
+            detail_category[i] = f'Biased_{cls_name}'
+            preferred_rr_label[i] = cls_name
+        else:
+            coarse_category[i] = 'Non_RR'
+            detail_category[i] = 'Non_RR'
+            preferred_rr_label[i] = 'Non_RR'
+
+    neuron_importance = (
+        np.bincount(tri_i, weights=edge_importance, minlength=n_neurons_fc)
+        + np.bincount(tri_j, weights=edge_importance, minlength=n_neurons_fc)
+    )
+    neuron_importance_norm = neuron_importance / (neuron_importance.sum() + 1e-12)
+
+    n_important_neurons = int(max(1, np.ceil(n_neurons_fc * task6_important_neuron_frac)))
+    important_neuron_idx = np.argsort(neuron_importance_norm)[::-1][:n_important_neurons]
+    is_important_neuron = np.zeros(n_neurons_fc, dtype=bool)
+    is_important_neuron[important_neuron_idx] = True
+
+    sel_start = max(0, min(task6_selectivity_window[0], segments_spi.shape[2] - 1))
+    sel_end = max(sel_start + 1, min(task6_selectivity_window[1], segments_spi.shape[2]))
+
+    resp_by_class = np.full((n_neurons_fc, len(class_ids_task6)), np.nan, dtype=float)
+    for ci, cls in enumerate(class_ids_task6):
+        cls_mask = labels_spi == int(cls)
+        if np.any(cls_mask):
+            cls_resp_all = np.nanmean(segments_spi[cls_mask, :, sel_start:sel_end], axis=(0, 2))
+            resp_by_class[:, ci] = cls_resp_all[neuron_ids_global]
+
+    selectivity_index = np.zeros(n_neurons_fc, dtype=float)
+    preferred_class = np.empty(n_neurons_fc, dtype=object)
+    for i in range(n_neurons_fc):
+        vals = resp_by_class[i]
+        if np.all(~np.isfinite(vals)):
+            selectivity_index[i] = 0.0
+            preferred_class[i] = 'Unknown'
+            continue
+        pref_ci = int(np.nanargmax(vals))
+        pref_cls = int(class_ids_task6[pref_ci])
+        preferred_class[i] = label_names.get(pref_cls, f'Class{pref_cls}') if 'label_names' in globals() else f'Class{pref_cls}'
+        top_val = float(vals[pref_ci])
+        oth = np.delete(vals, pref_ci)
+        oth_mean = float(np.nanmean(oth)) if np.any(np.isfinite(oth)) else 0.0
+        den = abs(top_val) + abs(oth_mean) + 1e-12
+        si = (top_val - oth_mean) / den
+        selectivity_index[i] = float(si if np.isfinite(si) else 0.0)
+
+    incident_edges = [[] for _ in range(n_neurons_fc)]
+    for e_idx, (ii, jj) in enumerate(zip(tri_i, tri_j)):
+        incident_edges[int(ii)].append(int(e_idx))
+        incident_edges[int(jj)].append(int(e_idx))
+    incident_edges = [np.asarray(v, dtype=int) for v in incident_edges]
+
+    coarse_order = [c for c in ['Shared_Core', 'Condition_Biased', 'Non_RR'] if np.any(coarse_category == c)]
+    ablation_eval_idx = []
+    for cat in coarse_order:
+        cand = np.where(coarse_category == cat)[0]
+        cand_sorted = cand[np.argsort(neuron_importance_norm[cand])[::-1]]
+        take_n = int(min(task6_ablation_eval_per_category, cand_sorted.size))
+        ablation_eval_idx.extend(cand_sorted[:take_n].tolist())
+    ablation_eval_idx = np.asarray(sorted(set(ablation_eval_idx)), dtype=int)
+
+    ablation_drop_actual = np.full(n_neurons_fc, np.nan, dtype=float)
+    for ni in ablation_eval_idx:
+        inc = incident_edges[int(ni)]
+        if inc.size == 0:
+            ablation_drop_actual[int(ni)] = 0.0
+            continue
+        delta_z = X_fc[:, inc] @ svd_ref.components_[:, inc].T
+        Z_abl = Z_fc - delta_z
+        acc_abl, _ = _linear_cv_acc(
+            Z_abl,
+            y_fc,
+            n_splits=fc_n_splits,
+            random_state=fc_random_state + 6000,
+            drop_components=None,
+        )
+        ablation_drop_actual[int(ni)] = float(linear_base_acc - acc_abl)
+
+    neuron_detail_df = pd.DataFrame(
+        {
+            'neuron_local_idx': np.arange(n_neurons_fc, dtype=int),
+            'neuron_global_idx': neuron_ids_global,
+            'membership_count': membership_count.astype(int),
+            'coarse_overlap': coarse_category,
+            'detail_overlap': detail_category,
+            'rr_label_single': preferred_rr_label,
+            'preferred_class': preferred_class,
+            'selectivity_index': selectivity_index,
+            'decoder_importance': neuron_importance_norm,
+            'ablation_effect_proxy': neuron_importance_norm,
+            'ablation_drop_actual': ablation_drop_actual,
+            'is_important_neuron': is_important_neuron.astype(int),
+        }
+    )
+    for ci, cls in enumerate(class_ids_task6):
+        cname = label_names.get(int(cls), f'Class{cls}') if 'label_names' in globals() else f'Class{cls}'
+        safe = str(cname).replace(' ', '_')
+        neuron_detail_df[f'resp_{safe}'] = resp_by_class[:, ci]
+
+    neuron_detail_csv_path = os.path.join(data_out_dir, 'neuron_decoder_linking_detail.csv')
+    neuron_detail_df.to_csv(neuron_detail_csv_path, index=False)
+
+    def _mean_sem(arr):
+        vals = np.asarray(arr, dtype=float)
+        vals = vals[np.isfinite(vals)]
+        if vals.size == 0:
+            return np.nan, np.nan
+        m = float(vals.mean())
+        if vals.size <= 1:
+            return m, np.nan
+        sem = float(vals.std(ddof=1) / np.sqrt(vals.size))
+        return m, sem
+
+    overlap_rows = []
+    M_n = int(n_neurons_fc)
+    N_n = int(n_important_neurons)
+    for cat in coarse_order:
+        mask_cat = coarse_category == cat
+        K_n = int(mask_cat.sum())
+        x_n = int(np.logical_and(mask_cat, is_important_neuron).sum())
+        expected_count = float(N_n * K_n / (M_n + 1e-12))
+        observed_prop = float(x_n / (N_n + 1e-12))
+        expected_prop = float(K_n / (M_n + 1e-12))
+        enrichment_ratio = float(observed_prop / (expected_prop + 1e-12))
+        log2_enrichment = float(np.log2((observed_prop + 1e-12) / (expected_prop + 1e-12)))
+        p_over = float(hypergeom.sf(x_n - 1, M_n, K_n, N_n))
+        p_under = float(hypergeom.cdf(x_n, M_n, K_n, N_n))
+        p_two = float(min(1.0, 2.0 * min(p_over, p_under)))
+        overlap_rows.append(
+            {
+                'overlap_category': cat,
+                'n_neurons_category': K_n,
+                'n_important_neurons_total': N_n,
+                'observed_important_count': x_n,
+                'expected_important_count': expected_count,
+                'observed_important_fraction': observed_prop,
+                'expected_important_fraction': expected_prop,
+                'enrichment_ratio': enrichment_ratio,
+                'log2_enrichment': log2_enrichment,
+                'p_over': p_over,
+                'p_under': p_under,
+                'p_two_sided': p_two,
+            }
+        )
+
+    overlap_enrichment_df = pd.DataFrame(overlap_rows)
+    if len(overlap_enrichment_df) > 0:
+        overlap_enrichment_df['p_fdr_bh'] = _bh_fdr(overlap_enrichment_df['p_two_sided'].to_numpy(dtype=float))
+    else:
+        overlap_enrichment_df['p_fdr_bh'] = []
+    overlap_enrichment_csv_path = os.path.join(data_out_dir, 'neuron_overlap_enrichment.csv')
+    overlap_enrichment_df.to_csv(overlap_enrichment_csv_path, index=False)
+
+    selectivity_rows = []
+    for level_type, arr_cat in [('coarse', coarse_category), ('detail', detail_category)]:
+        for cat in sorted(pd.Index(arr_cat).unique().tolist()):
+            mask = arr_cat == cat
+            n_cat = int(mask.sum())
+            n_imp_cat = int(np.logical_and(mask, is_important_neuron).sum())
+            m_sel, sem_sel = _mean_sem(selectivity_index[mask])
+            m_imp, sem_imp = _mean_sem(neuron_importance_norm[mask])
+            m_proxy, sem_proxy = _mean_sem(neuron_importance_norm[mask])
+            mask_act = np.logical_and(mask, np.isfinite(ablation_drop_actual))
+            m_act, sem_act = _mean_sem(ablation_drop_actual[mask_act])
+            selectivity_rows.append(
+                {
+                    'level_type': level_type,
+                    'overlap_category': cat,
+                    'n_neurons': n_cat,
+                    'n_important_neurons': n_imp_cat,
+                    'important_fraction': float(n_imp_cat / (n_cat + 1e-12)),
+                    'mean_selectivity_index': m_sel,
+                    'sem_selectivity_index': sem_sel,
+                    'mean_decoder_importance': m_imp,
+                    'sem_decoder_importance': sem_imp,
+                    'mean_ablation_effect_proxy': m_proxy,
+                    'sem_ablation_effect_proxy': sem_proxy,
+                    'n_actual_ablation_eval': int(mask_act.sum()),
+                    'mean_ablation_drop_actual': m_act,
+                    'sem_ablation_drop_actual': sem_act,
+                }
+            )
+
+    selectivity_by_overlap_df = pd.DataFrame(selectivity_rows)
+    selectivity_by_overlap_csv_path = os.path.join(data_out_dir, 'neuron_selectivity_by_overlap.csv')
+    selectivity_by_overlap_df.to_csv(selectivity_by_overlap_csv_path, index=False)
+
+    plot_sel_df = selectivity_by_overlap_df[
+        (selectivity_by_overlap_df['level_type'] == 'coarse')
+    ].copy()
+    plot_sel_df['overlap_category'] = pd.Categorical(plot_sel_df['overlap_category'], categories=coarse_order, ordered=True)
+    plot_sel_df = plot_sel_df.sort_values('overlap_category', ignore_index=True)
+    plot_enr_df = overlap_enrichment_df.copy()
+    plot_enr_df['overlap_category'] = pd.Categorical(plot_enr_df['overlap_category'], categories=coarse_order, ordered=True)
+    plot_enr_df = plot_enr_df.sort_values('overlap_category', ignore_index=True)
+
+    fig, axes = plt.subplots(1, 3, figsize=(15.0, 4.8), dpi=180)
+
+    x = np.arange(plot_enr_df.shape[0])
+    axes[0].bar(x, plot_enr_df['log2_enrichment'].to_numpy(dtype=float), color='#4C78A8', alpha=0.9)
+    axes[0].axhline(0.0, color='#666666', linewidth=1.0)
+    axes[0].set_xticks(x)
+    axes[0].set_xticklabels(plot_enr_df['overlap_category'].astype(str), rotation=20)
+    axes[0].set_ylabel('log2 enrichment of decoder-important neurons')
+    axes[0].set_title('Task6 Overlap Enrichment')
+    axes[0].grid(axis='y', linestyle='--', alpha=0.25)
+    for i, row in plot_enr_df.iterrows():
+        if np.isfinite(row['p_fdr_bh']) and float(row['p_fdr_bh']) < 0.05:
+            y = float(row['log2_enrichment'])
+            axes[0].text(i, y + (0.06 if y >= 0 else -0.10), '*', ha='center', va='center', fontsize=11)
+
+    x2 = np.arange(plot_sel_df.shape[0])
+    axes[1].bar(
+        x2,
+        plot_sel_df['mean_selectivity_index'].to_numpy(dtype=float),
+        yerr=plot_sel_df['sem_selectivity_index'].to_numpy(dtype=float),
+        color='#72B7B2',
+        alpha=0.9,
+        capsize=4,
+    )
+    axes[1].set_xticks(x2)
+    axes[1].set_xticklabels(plot_sel_df['overlap_category'].astype(str), rotation=20)
+    axes[1].set_ylabel('Mean selectivity index')
+    axes[1].set_title('Task6 Selectivity by Overlap')
+    axes[1].grid(axis='y', linestyle='--', alpha=0.25)
+
+    proxy_vals = plot_sel_df['mean_ablation_effect_proxy'].to_numpy(dtype=float)
+    proxy_sem = plot_sel_df['sem_ablation_effect_proxy'].to_numpy(dtype=float)
+    axes[2].bar(x2, proxy_vals, yerr=proxy_sem, color='#F58518', alpha=0.85, capsize=4, label='Ablation effect proxy')
+    act_vals = plot_sel_df['mean_ablation_drop_actual'].to_numpy(dtype=float)
+    act_sem = plot_sel_df['sem_ablation_drop_actual'].to_numpy(dtype=float)
+    axes[2].errorbar(x2, act_vals, yerr=act_sem, fmt='o', color='#1A1A1A', capsize=3, label='Actual drop (subset eval)')
+    axes[2].set_xticks(x2)
+    axes[2].set_xticklabels(plot_sel_df['overlap_category'].astype(str), rotation=20)
+    axes[2].set_ylabel('Mean ablation effect')
+    axes[2].set_title('Task6 Ablation Link by Overlap')
+    axes[2].grid(axis='y', linestyle='--', alpha=0.25)
+    axes[2].legend(frameon=False, fontsize=8)
+
+    fig.tight_layout()
+    task6_fig_path = os.path.join(fig_out_dir, 'neuron_decoder_linking_panel.png')
+    fig.savefig(task6_fig_path, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+
+    task34_outputs = {
+        'fc_decoder_summary_csv': fc_summary_csv,
+        'fc_decoder_confusion_fig': fc_fig_path,
+        'fc_stability_csv': edge_stability_csv_path,
+        'fc_component_stability_csv': component_stability_csv_path,
+        'fc_ablation_csv': edge_ablation_csv_path,
+        'fc_component_ablation_csv': component_ablation_csv_path,
+        'fc_task4_fig': task4_robust_fig_path,
+        'fc_task4_component_fig': component_task4_fig_path,
+        'fc_projection_top_edges_csv': top_edges_csv_path,
+        'fc_projection_by_strength_decile_csv': decile_csv_path,
+        'fc_projection_by_layer_pair_csv': depth_pair_csv_path,
+        'fc_projection_strong_weak_match_csv': strong_weak_csv_path,
+        'fc_projection_fig': task4_proj_fig_path,
+        'fc_important_edge_decile_map_csv': important_edge_map_csv_path,
+        'fc_edge_decile_enrichment_csv': enrichment_csv_path,
+        'fc_edge_decile_enrichment_fig': enrichment_fig_path,
+        'neuron_overlap_enrichment_csv': overlap_enrichment_csv_path,
+        'neuron_selectivity_by_overlap_csv': selectivity_by_overlap_csv_path,
+        'neuron_decoder_linking_detail_csv': neuron_detail_csv_path,
+        'neuron_decoder_linking_panel_fig': task6_fig_path,
+    }
+    print('[*] Task3 summary:', fc_summary_csv)
+    print('[*] Task3 confusion fig:', fc_fig_path)
+    print('[*] Task4 stability csv:', edge_stability_csv_path)
+    print('[*] Task4 component stability csv:', component_stability_csv_path)
+    print('[*] Task4 ablation csv:', edge_ablation_csv_path)
+    print('[*] Task4 component ablation csv:', component_ablation_csv_path)
+    print('[*] Task4 figure:', task4_robust_fig_path)
+    print('[*] Task4 component figure:', component_task4_fig_path)
+    print('[*] Task4 projection top edges csv:', top_edges_csv_path)
+    print('[*] Task4 projection by strength decile csv:', decile_csv_path)
+    print('[*] Task4 projection by layer pair csv:', depth_pair_csv_path)
+    print('[*] Task4 strong-weak match csv:', strong_weak_csv_path)
+    print('[*] Task4 projection figure:', task4_proj_fig_path)
+    print('[*] Task5 important edge decile map csv:', important_edge_map_csv_path)
+    print('[*] Task5 decile enrichment csv:', enrichment_csv_path)
+    print('[*] Task5 decile enrichment fig:', enrichment_fig_path)
+    print('[*] Task6 overlap enrichment csv:', overlap_enrichment_csv_path)
+    print('[*] Task6 selectivity by overlap csv:', selectivity_by_overlap_csv_path)
+    print('[*] Task6 neuron linking detail csv:', neuron_detail_csv_path)
+    print('[*] Task6 linking panel fig:', task6_fig_path)
+    print('[*] Task4 layer source:', layer_source)
+    task34_outputs
+
+
+    # %%
+    from IPython.display import Markdown, display
+
+    if len(overlap_enrichment_df) > 0:
+        best_overlap = overlap_enrichment_df.sort_values('log2_enrichment', ascending=False).iloc[0]
+        best_overlap_txt = str(best_overlap['overlap_category'])
+        best_overlap_enr = float(best_overlap['log2_enrichment'])
+        best_overlap_p = float(best_overlap['p_two_sided'])
+    else:
+        best_overlap_txt = 'NA'
+        best_overlap_enr = np.nan
+        best_overlap_p = np.nan
+
+    coarse_sel = selectivity_by_overlap_df[selectivity_by_overlap_df['level_type'] == 'coarse'].copy()
+    if len(coarse_sel) > 0:
+        best_sel = coarse_sel.sort_values('mean_selectivity_index', ascending=False).iloc[0]
+        best_sel_txt = str(best_sel['overlap_category'])
+        best_sel_val = float(best_sel['mean_selectivity_index'])
+    else:
+        best_sel_txt = 'NA'
+        best_sel_val = np.nan
+
+    lines = [
+        "### Task6 Result Snapshot",
+        f"- Most enriched overlap category: **{best_overlap_txt}** (log2 enrichment={best_overlap_enr:.4f}, p={best_overlap_p:.3g})",
+        f"- Highest selectivity category (coarse): **{best_sel_txt}** (mean SI={best_sel_val:.4f})",
+        f"- Overlap enrichment table: `{overlap_enrichment_csv_path}`",
+        f"- Selectivity table: `{selectivity_by_overlap_csv_path}`",
+        f"- Linking panel: `{task6_fig_path}`",
+    ]
+    display(Markdown('\\n'.join(lines)))
 
 
 
