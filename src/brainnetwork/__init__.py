@@ -63,6 +63,10 @@ from .decoding import (
     classify_by_timepoints,
 )
 
+from .decoder_task12 import (
+    run_decoder_task1_task2,
+)
+
 from .visualization import *
 
 # Define public API
@@ -95,6 +99,7 @@ __all__ = [
     "FI_by_timepoints_v2",
     "FI_by_neuron_count",
     "classify_by_timepoints",
+    "run_decoder_task1_task2",
 
     # Parameters
     "t_stimulus",
