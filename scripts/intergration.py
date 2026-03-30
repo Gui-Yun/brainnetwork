@@ -1,6 +1,7 @@
 import glob
 import json
 import os
+import warnings
 from itertools import combinations
 
 import matplotlib.pyplot as plt
@@ -16,18 +17,29 @@ os.makedirs(GROUP_OUT_DIR, exist_ok=True)
 
 CONDITIONS = ["Divergent", "Convergent", "Random"]
 
-# 1. 莫兰迪高级配色方案 (Elegant, muted pastel palette)
+# 1. 鑾叞杩珮绾ч厤鑹叉柟妗?(Elegant, muted pastel palette)
 COLORS = {
-    "Divergent": "#CB7A5C",  # Muted Terracotta / Brick Red
-    "Convergent": "#5C7CA3", # Muted Steel Blue
-    "Random": "#7DA889"      # Muted Sage Green
+    "Divergent": "#7F9C96",
+    "Convergent": "#8B90A8",
+    "Random": "#B98372",
+}
+
+COND_WEAK_COLORS = {
+    "Divergent": "#B8CBC6",
+    "Convergent": "#C3C6D5",
+    "Random": "#D9B7AD",
+}
+COND_STRONG_COLORS = {
+    "Divergent": "#5F7E77",
+    "Convergent": "#666C86",
+    "Random": "#8E5E50",
 }
 
 NETWORK_TYPE_COLORS = {
-    "strong": "#4A6478",
-    "weak": "#A8B6C1",
-    "strong_threshold": "#8C5669",
-    "weak_threshold": "#BCA9AE",
+    "strong": "#5F7088",
+    "weak": "#B8C1CE",
+    "strong_threshold": "#666C86",
+    "weak_threshold": "#C3C6D5",
 }
 NETWORK_TYPE_LABELS = {
     "strong": "Strong (rank)",
@@ -47,9 +59,19 @@ COND_ALIASES = {
 }
 
 GRAPH_METRICS = ["efficiency", "modularity", "local_efficiency", "avg_clustering"]
+GEOMETRY_METRICS = [
+    "mean_norm",
+    "angle_deg",
+    "var_parallel",
+    "var_orthogonal",
+    "orth_parallel_ratio",
+    "anisotropy_index",
+    "lambda1",
+    "lambda2",
+]
 
 # ==========================================
-# 2. 全局极简学术排版设置 (Global Publication Aesthetics)
+# 2. 鍏ㄥ眬鏋佺畝瀛︽湳鎺掔増璁剧疆 (Global Publication Aesthetics)
 # ==========================================
 sns.set_theme(style="ticks", context="paper")
 plt.rcParams.update(
@@ -78,13 +100,17 @@ plt.rcParams.update(
     }
 )
 
-def style_axis(ax):
-    """极简坐标轴样式"""
+def style_axis(ax, light_grid=False):
+    """Minimal publication axis style."""
     sns.despine(ax=ax, trim=False)
     ax.tick_params(axis='both', which='major', length=5, pad=6)
+    if light_grid:
+        ax.grid(axis="y", color="#E9E5DF", linewidth=0.8)
+    else:
+        ax.grid(False)
 
 # ==========================================
-# 3. 数据加载与解析核心逻辑 (Data Loading & Parsing)
+# 3. 鏁版嵁鍔犺浇涓庤В鏋愭牳蹇冮€昏緫 (Data Loading & Parsing)
 # ==========================================
 def normalize_condition(value):
     if value is None: return None
@@ -110,24 +136,42 @@ def load_optional_csv_by_pattern(data_dir, pattern):
     try: return pd.read_csv(paths[0])
     except Exception: return None
 
-def load_optional_csv_any(data_dir, filenames):
-    for fn in filenames:
-        df = load_optional_csv(data_dir, fn)
-        if df is not None:
-            return df
-    return None
-
 def load_all_mice_bundles(base_dir):
-    pattern = os.path.join(base_dir, "*", "data", "*_statistics.json")
-    json_files = sorted(glob.glob(pattern))
-    if not json_files: return []
+    data_dirs = sorted(glob.glob(os.path.join(base_dir, "*", "data")))
+    if not data_dirs:
+        return []
 
     bundles = []
-    for fp in json_files:
+    for data_dir in data_dirs:
+        folder_mouse_id = os.path.basename(os.path.dirname(data_dir))
+        all_stats = sorted(glob.glob(os.path.join(data_dir, "*_statistics.json")))
+        if not all_stats:
+            continue
+
+        preferred = os.path.join(data_dir, f"{folder_mouse_id}_statistics.json")
+        if os.path.exists(preferred):
+            fp = preferred
+        else:
+            # Fallback: choose latest file, but warn because this directory is ambiguous.
+            fp = max(all_stats, key=os.path.getmtime)
+            if len(all_stats) > 1:
+                print(
+                    f"[!] Multiple statistics JSONs in {data_dir}; "
+                    f"using latest: {os.path.basename(fp)}"
+                )
+
         with open(fp, "r", encoding="utf-8") as f:
             payload = json.load(f)
-        mouse_id = payload.get("mouse_id", os.path.basename(fp).replace("_statistics.json", ""))
-        data_dir = os.path.dirname(fp)
+
+        payload_mouse_id = payload.get("mouse_id", None)
+        if payload_mouse_id is not None and str(payload_mouse_id) != str(folder_mouse_id):
+            print(
+                f"[!] mouse_id mismatch in {fp}: "
+                f"folder={folder_mouse_id}, payload={payload_mouse_id}. "
+                f"Use folder mouse_id as canonical."
+            )
+
+        mouse_id = str(folder_mouse_id)
         bundles.append({
             "mouse_id": mouse_id, "json_path": fp, "data_dir": data_dir, "payload": payload,
             "trial_shape_summary": load_optional_csv(data_dir, "trial_response_shape_summary.csv"),
@@ -138,29 +182,26 @@ def load_all_mice_bundles(base_dir):
             "noise_decile_coupling": load_optional_csv(data_dir, "noise_corr_decile_coupling.csv"),
             "rr_overlap": load_optional_csv(data_dir, "rr_overlap_summary.csv"),
             "corr_deciles_csv": load_optional_csv(data_dir, f"{mouse_id}_correlation_deciles.csv"),
-            # Task1-2 decoder chain
-            "decoder_summary": load_optional_csv(data_dir, "decoder_summary.csv"),
-            "decoder_ablation_summary": load_optional_csv(data_dir, "decoder_ablation_summary.csv"),
-            # Task3 FC decoder
-            "fc_decoder_summary": load_optional_csv(data_dir, "fc_decoder_summary.csv"),
-            # Task4 robust importance (edge-level preferred, component-level fallback)
-            "fc_edge_stability": load_optional_csv_any(
-                data_dir,
-                ["fc_edge_importance_stability.csv", "fc_component_stability_selection.csv"],
-            ),
-            "fc_edge_ablation": load_optional_csv_any(
-                data_dir,
-                ["fc_edge_ablation_delta_acc.csv", "fc_component_ablation_delta_acc.csv"],
-            ),
-            "fc_projection_decile": load_optional_csv(data_dir, "fc_projection_by_strength_decile_task4.csv"),
-            "fc_projection_layer_pair": load_optional_csv(data_dir, "fc_projection_by_layer_pair_task4.csv"),
-            "fc_projection_strong_weak": load_optional_csv(data_dir, "fc_projection_strong_weak_match_task4.csv"),
-            # Task5
-            "fc_edge_decile_enrichment": load_optional_csv(data_dir, "fc_edge_decile_enrichment.csv"),
-            # Task6
-            "neuron_overlap_enrichment": load_optional_csv(data_dir, "neuron_overlap_enrichment.csv"),
-            "neuron_selectivity_overlap": load_optional_csv(data_dir, "neuron_selectivity_by_overlap.csv"),
+            # Shuffle analysis outputs (per-mouse)
+            "shuffle_manifest": load_optional_csv(data_dir, "population_pattern_shuffle_manifest.csv"),
+            "shuffle_corr_long": load_optional_csv(data_dir, "group_corr_shuffle_long.csv"),
+            "shuffle_corr_decile_long": load_optional_csv(data_dir, "group_corr_decile_shuffle_long.csv"),
+            "shuffle_rsm_long": load_optional_csv(data_dir, "group_rsm_shuffle_long.csv"),
+            "shuffle_delta_long": load_optional_csv(data_dir, "group_shuffle_delta_long.csv"),
+            "shuffle_dose_long": load_optional_csv(data_dir, "group_shuffle_dose_response_long.csv"),
+            "shuffle_alloc_long": load_optional_csv(data_dir, "group_allocation_shuffle_long.csv"),
+            "shuffle_effect_stats": load_optional_csv(data_dir, "group_shuffle_effect_stats.csv"),
+            "shuffle_condition_summary": load_optional_csv(data_dir, "group_shuffle_condition_summary.csv"),
+            "shuffle_condition_stats": load_optional_csv(data_dir, "group_shuffle_condition_stats.csv"),
+            "shuffle_sync_contribution": load_optional_csv(data_dir, "group_shuffle_sync_contribution.csv"),
+            "shuffle_sync_contribution_repeats": load_optional_csv(data_dir, "group_shuffle_sync_contribution_repeats.csv"),
+            # RSM geometry outputs (per-mouse)
+            "geometry_condition_level": load_optional_csv(data_dir, "geometry_condition_level_long.csv"),
+            "geometry_condition_pairwise": load_optional_csv(data_dir, "geometry_condition_pairwise.csv"),
+            "geometry_model_compare": load_optional_csv(data_dir, "geometry_rsm_model_compare.csv"),
+            "geometry_vs_dimensionality": load_optional_csv(data_dir, "geometry_vs_dimensionality_model_compare.csv"),
         })
+
     print(f"[*] Loaded {len(bundles)} mice from {base_dir}")
     return bundles
 
@@ -219,6 +260,37 @@ def _sig_noise_by_condition(sig_noise_df, condition):
         if src in row: cols[dst] = safe_float(row[src])
     return cols
 
+
+def _geometry_by_condition(geometry_df, condition):
+    cols = {}
+    if geometry_df is None or geometry_df.empty:
+        return cols
+    g = geometry_df.copy()
+    if "Condition" in g.columns:
+        g["Condition"] = g["Condition"].map(normalize_condition).fillna(g["Condition"])
+    elif "Class_Name" in g.columns:
+        g["Condition"] = g["Class_Name"].map(normalize_condition).fillna(g["Class_Name"])
+    else:
+        return cols
+    row = g[g["Condition"] == condition]
+    if row.empty:
+        return cols
+    row = row.iloc[0]
+    field_map = {
+        "mean_norm": "Geom_MeanNorm",
+        "angle_deg": "Geom_AngleDeg",
+        "var_parallel": "Geom_VarParallel",
+        "var_orthogonal": "Geom_VarOrthogonal",
+        "orth_parallel_ratio": "Geom_OrthParallelRatio",
+        "anisotropy_index": "Geom_Anisotropy",
+        "lambda1": "Geom_Lambda1",
+        "lambda2": "Geom_Lambda2",
+    }
+    for src, dst in field_map.items():
+        if src in row:
+            cols[dst] = safe_float(row[src])
+    return cols
+
 def build_master_dataframe(bundles):
     rows = []
     for b in bundles:
@@ -243,6 +315,7 @@ def build_master_dataframe(bundles):
             row.update(_trial_shape_by_condition(b["trial_shape_summary"], cond))
             row.update(_effective_dim_by_condition(b["effective_dim"], cond))
             row.update(_sig_noise_by_condition(b["sig_noise_summary"], cond))
+            row.update(_geometry_by_condition(b.get("geometry_condition_level"), cond))
             rows.append(row)
     return pd.DataFrame(rows)
 
@@ -290,317 +363,422 @@ def build_rr_overlap_dataframe(bundles):
     if not rows: return pd.DataFrame(columns=["mouse_id", "Subset", "Subset_Size"])
     return pd.concat(rows, ignore_index=True)
 
-def _concat_bundle_table(bundles, key, default_columns=None):
+
+def _concat_bundle_table(bundles, key):
     rows = []
     for b in bundles:
         df = b.get(key)
         if df is None or df.empty:
             continue
         tmp = df.copy()
-        tmp["mouse_id"] = b["mouse_id"]
+        if "mouse_id" not in tmp.columns:
+            if "mouse" in tmp.columns:
+                tmp["mouse_id"] = tmp["mouse"].astype(str)
+            else:
+                tmp["mouse_id"] = b["mouse_id"]
+        if "Condition" in tmp.columns:
+            tmp["Condition"] = tmp["Condition"].map(normalize_condition).fillna(tmp["Condition"])
+        if "condition" in tmp.columns:
+            tmp["condition"] = tmp["condition"].map(normalize_condition).fillna(tmp["condition"])
+            if "Condition" not in tmp.columns:
+                tmp["Condition"] = tmp["condition"]
         rows.append(tmp)
-    if not rows:
-        cols = default_columns or []
-        return pd.DataFrame(columns=(["mouse_id"] + cols if "mouse_id" not in cols else cols))
-    return pd.concat(rows, ignore_index=True)
+    return pd.concat(rows, ignore_index=True) if rows else pd.DataFrame()
 
-def _first_row_bundle_table(bundles, key, default_columns=None):
-    rows = []
-    for b in bundles:
-        df = b.get(key)
-        if df is None or df.empty:
-            continue
-        row = df.iloc[0].to_dict()
-        row["mouse_id"] = b["mouse_id"]
-        rows.append(row)
-    cols = (["mouse_id"] + (default_columns or []))
-    return pd.DataFrame(rows) if rows else pd.DataFrame(columns=cols)
 
-def build_decoder_summary_dataframe(bundles):
-    return _first_row_bundle_table(
-        bundles,
-        "decoder_summary",
-        default_columns=[
-            "accuracy_mean", "shuffle_accuracy_mean", "accuracy_minus_shuffle",
-            "recall_Divergent", "recall_Convergent", "recall_Random",
-        ],
+def build_shuffle_manifest_dataframe(bundles):
+    return _concat_bundle_table(bundles, "shuffle_manifest")
+
+
+def build_shuffle_corr_long_dataframe(bundles):
+    return _concat_bundle_table(bundles, "shuffle_corr_long")
+
+
+def build_shuffle_corr_decile_long_dataframe(bundles):
+    return _concat_bundle_table(bundles, "shuffle_corr_decile_long")
+
+
+def build_shuffle_rsm_long_dataframe(bundles):
+    return _concat_bundle_table(bundles, "shuffle_rsm_long")
+
+
+def build_shuffle_delta_long_dataframe(bundles):
+    return _concat_bundle_table(bundles, "shuffle_delta_long")
+
+
+def build_shuffle_dose_long_dataframe(bundles):
+    return _concat_bundle_table(bundles, "shuffle_dose_long")
+
+
+def build_shuffle_alloc_long_dataframe(bundles):
+    return _concat_bundle_table(bundles, "shuffle_alloc_long")
+
+
+def build_shuffle_effect_stats_dataframe(bundles):
+    return _concat_bundle_table(bundles, "shuffle_effect_stats")
+
+
+def build_shuffle_condition_summary_dataframe(bundles):
+    return _concat_bundle_table(bundles, "shuffle_condition_summary")
+
+
+def build_shuffle_condition_stats_dataframe(bundles):
+    return _concat_bundle_table(bundles, "shuffle_condition_stats")
+
+
+def build_shuffle_sync_contribution_dataframe(bundles):
+    return _concat_bundle_table(bundles, "shuffle_sync_contribution")
+
+
+def build_shuffle_sync_contribution_repeats_dataframe(bundles):
+    return _concat_bundle_table(bundles, "shuffle_sync_contribution_repeats")
+
+
+def build_geometry_condition_long_dataframe(bundles):
+    df = _concat_bundle_table(bundles, "geometry_condition_level")
+    if df.empty:
+        return df
+    if "Condition" in df.columns:
+        df["Condition"] = df["Condition"].map(normalize_condition).fillna(df["Condition"])
+    return df
+
+
+def build_geometry_pairwise_long_dataframe(bundles):
+    return _concat_bundle_table(bundles, "geometry_condition_pairwise")
+
+
+def build_geometry_model_compare_long_dataframe(bundles):
+    return _concat_bundle_table(bundles, "geometry_model_compare")
+
+
+def build_shuffle_core_long_dataframe(shuffle_corr_df, shuffle_rsm_df, shuffle_alloc_df):
+    if shuffle_corr_df is None or shuffle_corr_df.empty:
+        return pd.DataFrame()
+
+    out = shuffle_corr_df.copy()
+    keys = ["mouse_id", "Condition", "data_type", "repeat_id"]
+
+    if shuffle_rsm_df is not None and not shuffle_rsm_df.empty and "mean_rsm" in shuffle_rsm_df.columns:
+        keep = [c for c in keys + ["mean_rsm", "rsm_std", "rsm_entropy"] if c in shuffle_rsm_df.columns]
+        out = out.merge(shuffle_rsm_df[keep], on=[c for c in keys if c in keep], how="left")
+
+    if shuffle_alloc_df is not None and not shuffle_alloc_df.empty:
+        alloc_metrics = [c for c in ["participants_ratio", "gini_mean", "pr_mean", "pr_norm_mean"] if c in shuffle_alloc_df.columns]
+        if alloc_metrics:
+            keep = [c for c in keys + alloc_metrics if c in shuffle_alloc_df.columns]
+            out = out.merge(shuffle_alloc_df[keep], on=[c for c in keys if c in keep], how="left")
+
+    return out
+
+
+def summarize_shuffle_mouse_condition(core_df):
+    if core_df is None or core_df.empty:
+        return pd.DataFrame()
+    metric_cols = [c for c in [
+        "mean_corr", "weak_corr", "strong_corr", "strong_weak_gap",
+        "mean_rsm", "pr_mean", "participants_ratio", "gini_mean"
+    ] if c in core_df.columns]
+    if not metric_cols:
+        return pd.DataFrame()
+    grp = (
+        core_df.groupby(["mouse_id", "Condition", "data_type"], as_index=False)[metric_cols]
+        .mean(numeric_only=True)
     )
+    return grp
 
-def build_decoder_ablation_summary_dataframe(bundles):
-    return _first_row_bundle_table(
-        bundles,
-        "decoder_ablation_summary",
-        default_columns=[
-            "full_accuracy_mean", "top10_ablation_accuracy_mean", "random_drop_mean_accuracy",
-            "delta_full_minus_top10", "delta_top10_minus_random_mean", "ablation_rank_in_random",
-        ],
-    )
 
-def build_fc_decoder_summary_dataframe(bundles):
-    return _first_row_bundle_table(
-        bundles,
-        "fc_decoder_summary",
-        default_columns=[
-            "accuracy_mean", "shuffle_accuracy_mean", "accuracy_minus_shuffle",
-            "fc_minus_activity_ref", "recall_Divergent", "recall_Convergent", "recall_Random",
-        ],
-    )
+def test_shuffle_original_vs_shuffled(core_df):
+    """
+    Group-level test across mice:
+    per mouse+condition compare original vs mean(shuffled) using Wilcoxon.
+    """
+    mc = summarize_shuffle_mouse_condition(core_df)
+    if mc.empty:
+        return pd.DataFrame()
 
-def build_fc_edge_stability_long_dataframe(bundles):
-    return _concat_bundle_table(
-        bundles,
-        "fc_edge_stability",
-        default_columns=[
-            "rank", "edge_idx", "strength_decile", "corr_mean",
-            "edge_importance", "edge_importance_raw",
-            "selection_frequency", "mean_abs_coef",
-        ],
-    )
-
-def build_fc_edge_ablation_long_dataframe(bundles):
-    return _concat_bundle_table(
-        bundles,
-        "fc_edge_ablation",
-        default_columns=[
-            "ablation_type", "drop_fraction", "n_edges_dropped", "repeat_idx",
-            "base_accuracy_mean", "accuracy_mean", "delta_vs_base",
-        ],
-    )
-
-def build_fc_projection_decile_long_dataframe(bundles):
-    return _concat_bundle_table(
-        bundles,
-        "fc_projection_decile",
-        default_columns=["strength_decile", "n_edges", "importance_sum", "importance_mean", "corr_mean"],
-    )
-
-def build_fc_projection_layer_pair_long_dataframe(bundles):
-    return _concat_bundle_table(
-        bundles,
-        "fc_projection_layer_pair",
-        default_columns=["layer_pair", "n_edges", "importance_sum", "importance_mean", "corr_mean", "layer_source"],
-    )
-
-def build_fc_projection_strong_weak_long_dataframe(bundles):
-    return _concat_bundle_table(
-        bundles,
-        "fc_projection_strong_weak",
-        default_columns=[
-            "importance_strong_tail_decile10", "importance_weak_tail_decile1",
-            "importance_gap_d10_minus_d1", "corr_mean_decile10", "corr_mean_decile1",
-        ],
-    )
-
-def build_fc_edge_decile_enrichment_long_dataframe(bundles):
-    return _concat_bundle_table(
-        bundles,
-        "fc_edge_decile_enrichment",
-        default_columns=[
-            "level_type", "level", "observed_prop", "expected_prop",
-            "enrichment_ratio", "log2_enrichment", "p_two_sided", "p_fdr_bh",
-        ],
-    )
-
-def build_neuron_overlap_enrichment_long_dataframe(bundles):
-    return _concat_bundle_table(
-        bundles,
-        "neuron_overlap_enrichment",
-        default_columns=[
-            "overlap_category", "observed_important_fraction", "expected_important_fraction",
-            "enrichment_ratio", "log2_enrichment", "p_two_sided", "p_fdr_bh",
-        ],
-    )
-
-def build_neuron_selectivity_overlap_long_dataframe(bundles):
-    return _concat_bundle_table(
-        bundles,
-        "neuron_selectivity_overlap",
-        default_columns=[
-            "level_type", "overlap_category", "important_fraction",
-            "mean_selectivity_index", "mean_decoder_importance",
-            "mean_ablation_effect_proxy", "mean_ablation_drop_actual",
-        ],
-    )
-
-def build_fc_edge_stability_mouse_summary(stability_long_df):
-    cols = [
-        "mouse_id", "n_items", "importance_mean", "importance_sem",
-        "weak_tail_importance_sum", "strong_tail_importance_sum", "strong_minus_weak",
-        "top10_mean_importance",
-    ]
-    if stability_long_df is None or stability_long_df.empty:
-        return pd.DataFrame(columns=cols)
-
-    score_col = None
-    for candidate in ["edge_importance", "selection_frequency", "mean_abs_coef"]:
-        if candidate in stability_long_df.columns:
-            score_col = candidate
-            break
-    if score_col is None:
-        return pd.DataFrame(columns=cols)
+    metric_cols = [c for c in [
+        "mean_corr", "weak_corr", "strong_corr", "strong_weak_gap",
+        "mean_rsm", "pr_mean", "participants_ratio", "gini_mean"
+    ] if c in mc.columns]
 
     rows = []
-    for mouse_id, sub in stability_long_df.groupby("mouse_id"):
-        vals = pd.to_numeric(sub[score_col], errors="coerce").dropna()
-        if vals.empty:
+    for metric in metric_cols:
+        for cond in CONDITIONS:
+            sub = mc[mc["Condition"] == cond]
+            piv = sub.pivot(index="mouse_id", columns="data_type", values=metric)
+            if "original" not in piv.columns or "shuffled" not in piv.columns:
+                rows.append({
+                    "metric": metric, "Condition": cond, "n_mice": 0,
+                    "orig_mean": np.nan, "shuffled_mean": np.nan,
+                    "delta_orig_minus_shuffled": np.nan, "wilcoxon_p": np.nan
+                })
+                continue
+            piv = piv[["original", "shuffled"]].dropna()
+            if piv.empty:
+                rows.append({
+                    "metric": metric, "Condition": cond, "n_mice": 0,
+                    "orig_mean": np.nan, "shuffled_mean": np.nan,
+                    "delta_orig_minus_shuffled": np.nan, "wilcoxon_p": np.nan
+                })
+                continue
+
+            try:
+                _, p_val = stats.wilcoxon(piv["original"], piv["shuffled"]) if len(piv) >= 3 else (np.nan, np.nan)
+            except Exception:
+                p_val = np.nan
+
+            rows.append({
+                "metric": metric,
+                "Condition": cond,
+                "n_mice": int(len(piv)),
+                "orig_mean": float(piv["original"].mean()),
+                "shuffled_mean": float(piv["shuffled"].mean()),
+                "delta_orig_minus_shuffled": float((piv["original"] - piv["shuffled"]).mean()),
+                "wilcoxon_p": float(p_val) if pd.notna(p_val) else np.nan,
+            })
+    return pd.DataFrame(rows)
+
+
+def test_shuffle_condition_differences(core_df, data_type="shuffled"):
+    """
+    Group-level condition test across mice for shuffled-only (or original-only) values.
+    """
+    mc = summarize_shuffle_mouse_condition(core_df)
+    if mc.empty:
+        return pd.DataFrame()
+
+    sub = mc[mc["data_type"] == data_type].copy()
+    if sub.empty:
+        return pd.DataFrame()
+
+    metric_cols = [c for c in [
+        "mean_corr", "weak_corr", "strong_corr", "strong_weak_gap",
+        "mean_rsm", "pr_mean", "participants_ratio", "gini_mean"
+    ] if c in sub.columns]
+
+    rows = []
+    for metric in metric_cols:
+        dup_n = int(sub.duplicated(["mouse_id", "Condition"]).sum())
+        if dup_n > 0:
+            print(f"[!] Duplicates found for shuffle condition test ({metric}): {dup_n}. Use mean aggregation.")
+        piv = (
+            sub.pivot_table(index="mouse_id", columns="Condition", values=metric, aggfunc="mean")
+            .reindex(columns=CONDITIONS)
+            .dropna()
+        )
+        if len(piv) < 3:
+            rows.append({
+                "metric": metric, "data_type": data_type,
+                "main_effect": "N too small", "p_main": np.nan,
+                "Divergent_vs_Convergent": np.nan,
+                "Divergent_vs_Random": np.nan,
+                "Convergent_vs_Random": np.nan,
+            })
+            continue
+        stat, p_val = stats.friedmanchisquare(piv["Divergent"], piv["Convergent"], piv["Random"])
+        pair_p = {}
+        for c1, c2 in combinations(CONDITIONS, 2):
+            try:
+                _, p_pair = stats.wilcoxon(piv[c1], piv[c2])
+            except Exception:
+                p_pair = np.nan
+            pair_p[f"{c1}_vs_{c2}"] = p_pair
+        rows.append({
+            "metric": metric,
+            "data_type": data_type,
+            "main_effect": rf"Friedman $\chi^2$={stat:.2f}, $p$={p_val:.3e}",
+            "p_main": float(p_val),
+            "Divergent_vs_Convergent": pair_p.get("Divergent_vs_Convergent", np.nan),
+            "Divergent_vs_Random": pair_p.get("Divergent_vs_Random", np.nan),
+            "Convergent_vs_Random": pair_p.get("Convergent_vs_Random", np.nan),
+        })
+    return pd.DataFrame(rows)
+
+
+def test_shuffle_sync_contribution(sync_df):
+    """
+    Group-level synchrony contribution test across mice.
+    H0: median(sync_contribution_abs) = 0
+    H1: median(sync_contribution_abs) > 0
+    """
+    if sync_df is None or sync_df.empty:
+        return pd.DataFrame()
+
+    work = sync_df.copy()
+    if "mouse_id" not in work.columns and "mouse" in work.columns:
+        work["mouse_id"] = work["mouse"].astype(str)
+
+    if "sync_contribution_abs" not in work.columns:
+        if {"abs_contrast_original", "abs_contrast_shuffled_mean"}.issubset(set(work.columns)):
+            work["sync_contribution_abs"] = (
+                pd.to_numeric(work["abs_contrast_original"], errors="coerce")
+                - pd.to_numeric(work["abs_contrast_shuffled_mean"], errors="coerce")
+            )
+        else:
+            return pd.DataFrame()
+
+    per_mouse = (
+        work.groupby(["mouse_id", "metric"], as_index=False)["sync_contribution_abs"]
+        .mean(numeric_only=True)
+    )
+    if per_mouse.empty:
+        return pd.DataFrame()
+
+    rows = []
+    for metric in sorted(per_mouse["metric"].dropna().unique()):
+        vals = per_mouse.loc[per_mouse["metric"] == metric, "sync_contribution_abs"].astype(float)
+        vals = vals[np.isfinite(vals)]
+        n = int(vals.size)
+        if n == 0:
             continue
 
-        topk = max(1, int(np.ceil(len(vals) * 0.10)))
-        top10_mean = float(vals.nlargest(topk).mean())
-        weak_sum = np.nan
-        strong_sum = np.nan
-        if "strength_decile" in sub.columns:
-            dec = pd.to_numeric(sub["strength_decile"], errors="coerce")
-            weak_sum = float(pd.to_numeric(sub.loc[dec.isin([1, 2]), score_col], errors="coerce").sum())
-            strong_sum = float(pd.to_numeric(sub.loc[dec.isin([9, 10]), score_col], errors="coerce").sum())
+        try:
+            sign_p = stats.binomtest(int(np.sum(vals > 0)), n=n, p=0.5, alternative="greater").pvalue
+        except Exception:
+            sign_p = np.nan
+
+        if n >= 3:
+            try:
+                w_stat, w_p_two = stats.wilcoxon(vals)
+            except Exception:
+                w_stat, w_p_two = np.nan, np.nan
+            try:
+                _, w_p_greater = stats.wilcoxon(vals, alternative="greater")
+            except Exception:
+                w_p_greater = np.nan
+        else:
+            w_stat, w_p_two, w_p_greater = np.nan, np.nan, np.nan
 
         rows.append(
             {
-                "mouse_id": mouse_id,
-                "n_items": int(vals.size),
-                "importance_mean": float(vals.mean()),
-                "importance_sem": float(vals.sem()) if vals.size > 1 else np.nan,
-                "weak_tail_importance_sum": weak_sum,
-                "strong_tail_importance_sum": strong_sum,
-                "strong_minus_weak": strong_sum - weak_sum if pd.notna(weak_sum) and pd.notna(strong_sum) else np.nan,
-                "top10_mean_importance": top10_mean,
+                "metric": metric,
+                "n_mice": n,
+                "mean_sync_contribution_abs": float(np.mean(vals)),
+                "sem_sync_contribution_abs": float(np.std(vals, ddof=1) / np.sqrt(n)) if n > 1 else np.nan,
+                "median_sync_contribution_abs": float(np.median(vals)),
+                "n_positive": int(np.sum(vals > 0)),
+                "ratio_positive": float(np.mean(vals > 0)),
+                "wilcoxon_stat": float(w_stat) if pd.notna(w_stat) else np.nan,
+                "wilcoxon_p_two_sided": float(w_p_two) if pd.notna(w_p_two) else np.nan,
+                "wilcoxon_p_one_sided_greater": float(w_p_greater) if pd.notna(w_p_greater) else np.nan,
+                "binom_p_one_sided_greater": float(sign_p) if pd.notna(sign_p) else np.nan,
             }
         )
-    return pd.DataFrame(rows, columns=cols)
-
-def _paired_wilcoxon_summary(df, left_col, right_col, label):
-    if df is None or df.empty or left_col not in df.columns or right_col not in df.columns:
-        return None
-    sub = df[["mouse_id", left_col, right_col]].dropna()
-    if sub.empty:
-        return None
-    delta = sub[left_col] - sub[right_col]
-    p_val = np.nan
-    if len(sub) >= 3:
-        try:
-            _, p_val = stats.wilcoxon(sub[left_col], sub[right_col])
-        except Exception:
-            p_val = np.nan
-    return {
-        "Analysis": label,
-        "N_mice": int(len(sub)),
-        "Mean_Delta": float(delta.mean()),
-        "SEM_Delta": float(delta.sem()) if len(sub) > 1 else np.nan,
-        "p_value": p_val,
-        "Significance": p_to_star(p_val),
-    }
-
-def _onesample_wilcoxon_summary(series, label):
-    vals = pd.to_numeric(series, errors="coerce").dropna()
-    if vals.empty:
-        return None
-    p_val = np.nan
-    if len(vals) >= 3:
-        try:
-            _, p_val = stats.wilcoxon(vals)
-        except Exception:
-            p_val = np.nan
-    return {
-        "Analysis": label,
-        "N_mice": int(len(vals)),
-        "Mean_Delta": float(vals.mean()),
-        "SEM_Delta": float(vals.sem()) if len(vals) > 1 else np.nan,
-        "p_value": p_val,
-        "Significance": p_to_star(p_val),
-    }
-
-def build_decoder_chain_stats_table(
-    task1_df,
-    task2_df,
-    task3_df,
-    task4_ablation_long_df,
-    task5_enrichment_long_df,
-    task6_overlap_enrichment_long_df,
-):
-    rows = []
-
-    r = _paired_wilcoxon_summary(task1_df, "accuracy_mean", "shuffle_accuracy_mean", "Task1: activity decoder vs shuffle")
-    if r is not None: rows.append(r)
-    r = _paired_wilcoxon_summary(task2_df, "full_accuracy_mean", "top10_ablation_accuracy_mean", "Task2: full vs top10 neuron ablation")
-    if r is not None: rows.append(r)
-    r = _paired_wilcoxon_summary(task2_df, "top10_ablation_accuracy_mean", "random_drop_mean_accuracy", "Task2: top10 ablation vs random drop")
-    if r is not None: rows.append(r)
-    r = _paired_wilcoxon_summary(task3_df, "accuracy_mean", "shuffle_accuracy_mean", "Task3: FC decoder vs shuffle")
-    if r is not None: rows.append(r)
-
-    if task1_df is not None and not task1_df.empty and task3_df is not None and not task3_df.empty:
-        merged = pd.merge(
-            task1_df[["mouse_id", "accuracy_mean"]].rename(columns={"accuracy_mean": "task1_acc"}),
-            task3_df[["mouse_id", "accuracy_mean"]].rename(columns={"accuracy_mean": "task3_acc"}),
-            on="mouse_id",
-            how="inner",
-        )
-        r = _paired_wilcoxon_summary(merged, "task3_acc", "task1_acc", "Task3 vs Task1: FC decoder vs activity decoder")
-        if r is not None: rows.append(r)
-
-    if task4_ablation_long_df is not None and not task4_ablation_long_df.empty:
-        if {"ablation_type", "drop_fraction", "mouse_id", "delta_vs_base"}.issubset(task4_ablation_long_df.columns):
-            top_df = task4_ablation_long_df[task4_ablation_long_df["ablation_type"] == "top"].copy()
-            rand_df = task4_ablation_long_df[task4_ablation_long_df["ablation_type"] == "random"].copy()
-            rand_mean = (
-                rand_df.groupby(["mouse_id", "drop_fraction"], as_index=False)["delta_vs_base"]
-                .mean()
-                .rename(columns={"delta_vs_base": "rand_delta_vs_base"})
-            )
-            top_keep = top_df[["mouse_id", "drop_fraction", "delta_vs_base"]].rename(columns={"delta_vs_base": "top_delta_vs_base"})
-            merged = pd.merge(top_keep, rand_mean, on=["mouse_id", "drop_fraction"], how="inner")
-            for frac in sorted(merged["drop_fraction"].dropna().unique().tolist()):
-                sub = merged[merged["drop_fraction"] == frac]
-                r = _paired_wilcoxon_summary(
-                    sub,
-                    "top_delta_vs_base",
-                    "rand_delta_vs_base",
-                    f"Task4: top-edge vs random-edge ablation (drop={int(round(frac * 100))}%)",
-                )
-                if r is not None: rows.append(r)
-
-    if task5_enrichment_long_df is not None and not task5_enrichment_long_df.empty:
-        if {"level_type", "level", "mouse_id", "log2_enrichment"}.issubset(task5_enrichment_long_df.columns):
-            regime = task5_enrichment_long_df[task5_enrichment_long_df["level_type"] == "regime"].copy()
-            pivot = regime.pivot_table(index="mouse_id", columns="level", values="log2_enrichment", aggfunc="first").reset_index()
-            if {"WeakTail_D1D2", "StrongTail_D9D10"}.issubset(pivot.columns):
-                r = _paired_wilcoxon_summary(
-                    pivot,
-                    "WeakTail_D1D2",
-                    "StrongTail_D9D10",
-                    "Task5: weak-tail vs strong-tail log2 enrichment",
-                )
-                if r is not None: rows.append(r)
-            if "WeakTail_D1D2" in pivot.columns:
-                r = _onesample_wilcoxon_summary(pivot["WeakTail_D1D2"], "Task5: weak-tail enrichment vs 0")
-                if r is not None: rows.append(r)
-
-    if task6_overlap_enrichment_long_df is not None and not task6_overlap_enrichment_long_df.empty:
-        if {"mouse_id", "overlap_category", "log2_enrichment"}.issubset(task6_overlap_enrichment_long_df.columns):
-            pivot = task6_overlap_enrichment_long_df.pivot_table(
-                index="mouse_id", columns="overlap_category", values="log2_enrichment", aggfunc="first"
-            ).reset_index()
-            if {"Shared_Core", "Condition_Biased"}.issubset(pivot.columns):
-                r = _paired_wilcoxon_summary(
-                    pivot,
-                    "Shared_Core",
-                    "Condition_Biased",
-                    "Task6: Shared_Core vs Condition_Biased enrichment",
-                )
-                if r is not None: rows.append(r)
-            if "Shared_Core" in pivot.columns:
-                r = _onesample_wilcoxon_summary(pivot["Shared_Core"], "Task6: Shared_Core enrichment vs 0")
-                if r is not None: rows.append(r)
 
     return pd.DataFrame(rows)
 
+
+def run_geometry_lmm_models(master_df):
+    need_cols = {
+        "mouse_id",
+        "Condition",
+        "Mean_RSM_Sim",
+        "Participants_Ratio",
+        "Effective_Dim_PR",
+        "Geom_AngleDeg",
+        "Geom_OrthParallelRatio",
+    }
+    if master_df is None or master_df.empty or not need_cols.issubset(set(master_df.columns)):
+        return pd.DataFrame()
+
+    work = master_df[list(need_cols)].copy()
+    work = work[work["Condition"].isin(CONDITIONS)].copy()
+
+    model_specs = [
+        ("M1", "Mean_RSM_Sim ~ Geom_AngleDeg", ["Mean_RSM_Sim", "Geom_AngleDeg"], ["Geom_AngleDeg"]),
+        ("M2", "Mean_RSM_Sim ~ Geom_OrthParallelRatio", ["Mean_RSM_Sim", "Geom_OrthParallelRatio"], ["Geom_OrthParallelRatio"]),
+        ("M3", "Mean_RSM_Sim ~ Participants_Ratio + Geom_AngleDeg", ["Mean_RSM_Sim", "Participants_Ratio", "Geom_AngleDeg"], ["Participants_Ratio", "Geom_AngleDeg"]),
+        ("M4", "Mean_RSM_Sim ~ Participants_Ratio + Geom_OrthParallelRatio", ["Mean_RSM_Sim", "Participants_Ratio", "Geom_OrthParallelRatio"], ["Participants_Ratio", "Geom_OrthParallelRatio"]),
+        ("A1", "Geom_AngleDeg ~ Participants_Ratio", ["Geom_AngleDeg", "Participants_Ratio"], ["Participants_Ratio"]),
+        ("A2", "Geom_OrthParallelRatio ~ Participants_Ratio", ["Geom_OrthParallelRatio", "Participants_Ratio"], ["Participants_Ratio"]),
+        ("D1", "Mean_RSM_Sim ~ Effective_Dim_PR", ["Mean_RSM_Sim", "Effective_Dim_PR"], ["Effective_Dim_PR"]),
+        ("D2", "Mean_RSM_Sim ~ Geom_AngleDeg + Effective_Dim_PR", ["Mean_RSM_Sim", "Geom_AngleDeg", "Effective_Dim_PR"], ["Geom_AngleDeg", "Effective_Dim_PR"]),
+        ("D3", "Mean_RSM_Sim ~ Geom_OrthParallelRatio + Effective_Dim_PR", ["Mean_RSM_Sim", "Geom_OrthParallelRatio", "Effective_Dim_PR"], ["Geom_OrthParallelRatio", "Effective_Dim_PR"]),
+    ]
+
+    rows = []
+    for model_name, formula, cols, terms in model_specs:
+        sub = work[["mouse_id"] + cols].dropna().copy()
+        n_obs = int(len(sub))
+        n_mice = int(sub["mouse_id"].nunique())
+        if n_obs < 6 or n_mice < 3:
+            for term in terms:
+                rows.append(
+                    {
+                        "model_name": model_name,
+                        "formula": formula,
+                        "term": term,
+                        "beta": np.nan,
+                        "p_value": np.nan,
+                        "aic": np.nan,
+                        "bic": np.nan,
+                        "llf": np.nan,
+                        "n_obs": n_obs,
+                        "n_mice": n_mice,
+                        "converged": False,
+                        "note": "N too small",
+                    }
+                )
+            continue
+
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                model = smf.mixedlm(formula, sub, groups=sub["mouse_id"])
+                fit = model.fit(reml=False, method="lbfgs", maxiter=300, disp=False)
+            for term in terms:
+                rows.append(
+                    {
+                        "model_name": model_name,
+                        "formula": formula,
+                        "term": term,
+                        "beta": safe_float(fit.params.get(term, np.nan)),
+                        "p_value": safe_float(fit.pvalues.get(term, np.nan)),
+                        "aic": safe_float(getattr(fit, "aic", np.nan)),
+                        "bic": safe_float(getattr(fit, "bic", np.nan)),
+                        "llf": safe_float(getattr(fit, "llf", np.nan)),
+                        "n_obs": n_obs,
+                        "n_mice": n_mice,
+                        "converged": bool(getattr(fit, "converged", False)),
+                        "note": "",
+                    }
+                )
+        except Exception as exc:
+            for term in terms:
+                rows.append(
+                    {
+                        "model_name": model_name,
+                        "formula": formula,
+                        "term": term,
+                        "beta": np.nan,
+                        "p_value": np.nan,
+                        "aic": np.nan,
+                        "bic": np.nan,
+                        "llf": np.nan,
+                        "n_obs": n_obs,
+                        "n_mice": n_mice,
+                        "converged": False,
+                        "note": f"fit failed: {exc}",
+                    }
+                )
+
+    return pd.DataFrame(rows)
+
+
 def perform_statistical_tests(df, metric):
-    pivot = df.pivot(index="mouse_id", columns="Condition", values=metric).reindex(columns=CONDITIONS).dropna()
+    dup_n = int(df[["mouse_id", "Condition", metric]].dropna().duplicated(["mouse_id", "Condition"]).sum())
+    if dup_n > 0:
+        print(f"[!] Duplicates found for {metric}: {dup_n}. Use mean aggregation by mouse+condition.")
+    pivot = (
+        df.pivot_table(index="mouse_id", columns="Condition", values=metric, aggfunc="mean")
+        .reindex(columns=CONDITIONS)
+        .dropna()
+    )
     if len(pivot) < 3:
         return {"main_effect": "N too small", "p_main": np.nan, "post_hoc": {}}
 
     stat, p_val = stats.friedmanchisquare(pivot["Divergent"], pivot["Convergent"], pivot["Random"])
-    # 修复：加上 rf 前缀防止 \c 被警告，输出标准的卡方符号
+    # 淇锛氬姞涓?rf 鍓嶇紑闃叉 \c 琚鍛婏紝杈撳嚭鏍囧噯鐨勫崱鏂圭鍙?
     out = {"main_effect": rf"Friedman $\chi^2$={stat:.2f}, $p$={p_val:.3e}", "p_main": p_val, "post_hoc": {}}
 
     for c1, c2 in combinations(CONDITIONS, 2):
@@ -618,33 +796,21 @@ def p_to_star(p_val):
     if p_val < 0.05: return "*"
     return "ns"
 
-def df_to_markdown(df, index=False):
+
+def df_to_md(df):
+    if df is None or len(df) == 0:
+        return "_No data._"
     try:
-        return df.to_markdown(index=index)
+        return df.to_markdown(index=False)
     except Exception:
-        data = df.copy()
-        if not index and data.index.name is not None:
-            data = data.reset_index(drop=True)
-        if index:
-            data = data.reset_index()
-        cols = list(data.columns)
-        lines = []
-        lines.append("| " + " | ".join([str(c) for c in cols]) + " |")
-        lines.append("| " + " | ".join([":---"] * len(cols)) + " |")
-        for _, row in data.iterrows():
-            vals = []
-            for c in cols:
-                v = row[c]
-                vals.append("" if pd.isna(v) else str(v))
-            lines.append("| " + " | ".join(vals) + " |")
-        return "\n".join(lines)
+        return "```text\n" + df.to_string(index=False) + "\n```"
 
 # ==========================================
-# 4. 优雅的可视化函数 (Elegant Publication Plotting Functions)
+# 4. 浼橀泤鐨勫彲瑙嗗寲鍑芥暟 (Elegant Publication Plotting Functions)
 # ==========================================
 def save_figure_variants(fig, save_path):
     fig.savefig(save_path, dpi=300, bbox_inches="tight", transparent=False)
-    # 生成供论文排版的无标题版本
+    # 鐢熸垚渚涜鏂囨帓鐗堢殑鏃犳爣棰樼増鏈?
     suptitle = fig._suptitle
     if suptitle is not None: suptitle.set_visible(False)
     for ax in fig.axes: ax.set_title("")
@@ -653,34 +819,88 @@ def save_figure_variants(fig, save_path):
     return save_path
 
 def plot_group_metric(df, metric, ylabel, title, stat_res, save_name):
-    """极简带误差棒的柱状图 (Minimalist Barplot) - 避免点线过杂"""
+    """Paired estimation-style: violin + raw points + mouse lines + mean卤SEM."""
     if metric not in df.columns or df[metric].isna().all(): return None
 
     sub = df[["mouse_id", "Condition", metric]].dropna().copy()
     if sub.empty: return None
     sub["Condition"] = pd.Categorical(sub["Condition"], categories=CONDITIONS, ordered=True)
 
-    fig, ax = plt.subplots(figsize=(4.2, 5))
-    
-    # 修复了 Seaborn 未指定 hue 的告警
-    sns.barplot(
-        data=sub, x="Condition", y=metric, 
-        hue="Condition", palette=COLORS, legend=False,
-        errorbar="se", capsize=0.15, 
-        err_kws={'linewidth': 2, 'color': '#333333'},
-        linewidth=1.5, edgecolor="#333333", alpha=0.85, ax=ax
+    fig, ax = plt.subplots(figsize=(4.8, 5.2))
+    order = CONDITIONS
+    x_pos = np.arange(len(order))
+
+    sns.violinplot(
+        data=sub,
+        x="Condition",
+        y=metric,
+        order=order,
+        hue="Condition",
+        hue_order=order,
+        palette=COLORS,
+        inner="quartile",
+        cut=0,
+        linewidth=1.0,
+        alpha=0.26,
+        legend=False,
+        ax=ax,
     )
+
+    pivot = (
+        sub.pivot_table(index="mouse_id", columns="Condition", values=metric, aggfunc="mean")
+        .reindex(columns=order)
+    )
+    for _, row in pivot.iterrows():
+        y = row.values.astype(float)
+        mask = ~np.isnan(y)
+        if mask.sum() >= 2:
+            ax.plot(x_pos[mask], y[mask], color="#A9A39A", lw=0.9, alpha=0.55, zorder=2)
+
+    sns.stripplot(
+        data=sub,
+        x="Condition",
+        y=metric,
+        order=order,
+        hue="Condition",
+        hue_order=order,
+        palette=COLORS,
+        dodge=False,
+        size=4.2,
+        alpha=0.72,
+        edgecolor="white",
+        linewidth=0.6,
+        legend=False,
+        ax=ax,
+    )
+
+    means = sub.groupby("Condition")[metric].mean().reindex(order)
+    sems = sub.groupby("Condition")[metric].sem().reindex(order)
+    for i, cond in enumerate(order):
+        if pd.isna(means[cond]):
+            continue
+        ax.errorbar(
+            i + 0.18,
+            means[cond],
+            yerr=sems[cond],
+            fmt="o",
+            color="#2F2F2F",
+            ecolor="#2F2F2F",
+            markersize=5.5,
+            lw=2.0,
+            capsize=0,
+            zorder=5,
+        )
 
     ax.set_xlabel("")
     ax.set_ylabel(ylabel)
     ax.set_title(f"{title}\n{stat_res.get('main_effect', '')}", pad=15)
     style_axis(ax)
 
-    # 绘制显著性星号支架
+    # 缁樺埗鏄捐憲鎬ф槦鍙锋敮鏋?
     if pd.notna(stat_res.get("p_main")) and stat_res.get("p_main", 1.0) < 0.1:
-        y_max = sub[metric].max() * 1.05
+        y_max = sub[metric].max() * 1.02
         y_range = max(sub[metric].max() - sub[metric].min(), 1e-6)
-        step = y_range * 0.1
+        step = y_range * 0.08
         base = y_max
 
         sig_pairs = []
@@ -691,7 +911,7 @@ def plot_group_metric(df, metric, ylabel, title, stat_res, save_name):
         for i, (c1, c2, star) in enumerate(sig_pairs):
             x1, x2 = CONDITIONS.index(c1), CONDITIONS.index(c2)
             y = base + i * step
-            ax.plot([x1, x1, x2, x2], [y, y + step*0.2, y + step*0.2, y], lw=1.5, c="#333333")
+            ax.plot([x1, x1, x2, x2], [y, y + step*0.2, y + step*0.2, y], lw=1.3, c="#333333")
             ax.text((x1 + x2) * 0.5, y + step*0.25, star, ha="center", va="bottom", color="#111111", fontsize=12, fontweight='bold')
         if sig_pairs: ax.set_ylim(top=base + len(sig_pairs)*step + step*1.5)
 
@@ -702,10 +922,7 @@ def plot_group_metric(df, metric, ylabel, title, stat_res, save_name):
 
 
 def plot_combined_strong_weak(df):
-    """
-    UPGRADE: 使用高级双面板箱型图 (Dual-panel Boxplots) 解决尺度压缩和杂乱问题。
-    左图强连接，右图弱连接，独立Y轴，避免点线互相干扰。
-    """
+    """Condition-wise strong-vs-weak endpoint dumbbell panel (group mean 卤95% CI)."""
     required = ["Strong_Correlation", "Weak_Correlation"]
     if not all(c in df.columns for c in required): return None
 
@@ -713,37 +930,38 @@ def plot_combined_strong_weak(df):
     if sub.empty: return None
     sub["Condition"] = pd.Categorical(sub["Condition"], categories=CONDITIONS, ordered=True)
 
-    # 创建双面板图
-    fig, axes = plt.subplots(1, 2, figsize=(7.5, 4.5), gridspec_kw={'wspace': 0.35})
+    fig, ax = plt.subplots(figsize=(6.2, 4.7))
+    order = CONDITIONS
+    x = np.arange(len(order))
 
-    metrics = [
-        ("Strong_Correlation", "Strong Connections\n(Top 10%)"),
-        ("Weak_Correlation", "Weak Connections\n(Bottom 10%)")
-    ]
+    for i, cond in enumerate(order):
+        vals_w = sub.loc[sub["Condition"] == cond, "Weak_Correlation"].astype(float).dropna()
+        vals_s = sub.loc[sub["Condition"] == cond, "Strong_Correlation"].astype(float).dropna()
+        if len(vals_w) == 0 or len(vals_s) == 0:
+            continue
 
-    for ax, (col, title) in zip(axes, metrics):
-        # 画高级箱型图：宽度收窄，去除离群点标志，透明度调整
-        sns.boxplot(
-            data=sub, x="Condition", y=col,
-            hue="Condition", palette=COLORS, legend=False,
-            ax=ax, width=0.5, linewidth=1.5, fliersize=0,
-            boxprops=dict(alpha=0.75, edgecolor='#333')
+        m_w, m_s = float(vals_w.mean()), float(vals_s.mean())
+        ci_w = 1.96 * float(vals_w.sem()) if len(vals_w) > 1 else 0.0
+        ci_s = 1.96 * float(vals_s.sem()) if len(vals_s) > 1 else 0.0
+
+        ax.plot([i, i], [m_w, m_s], color="#8D8A84", lw=2.0, alpha=0.9, zorder=2)
+        ax.errorbar(
+            i - 0.06, m_w, yerr=ci_w, fmt="o",
+            color=COND_WEAK_COLORS[cond], ecolor=COND_WEAK_COLORS[cond],
+            lw=1.8, capsize=0, zorder=4
         )
-        
-        # 叠加非常低调的半透明散点以展示 N=8，避免过于空白
-        sns.stripplot(
-            data=sub, x="Condition", y=col,
-            color="#333333", alpha=0.5, size=4, jitter=0.15, ax=ax
+        ax.errorbar(
+            i + 0.06, m_s, yerr=ci_s, fmt="o",
+            color=COND_STRONG_COLORS[cond], ecolor=COND_STRONG_COLORS[cond],
+            lw=1.8, capsize=0, zorder=4
         )
-        
-        ax.set_title(title, pad=15, fontsize=13, fontweight='bold')
-        ax.set_ylabel("Mean Correlation" if ax == axes[0] else "")
-        ax.set_xlabel("")
-        style_axis(ax)
 
-    # 统一的大标题，稍微调高 y 避免与子图标题重叠
-    fig.suptitle("Divergent Modulation: Strong vs. Weak Network Couplings", 
-                 fontsize=15, fontweight='bold', y=1.06)
+    ax.set_xticks(x)
+    ax.set_xticklabels(order)
+    ax.set_xlabel("")
+    ax.set_ylabel("Mean correlation")
+    ax.set_title("Strong vs Weak Endpoints")
+    style_axis(ax)
 
     out = os.path.join(GROUP_OUT_DIR, "group_combined_strong_weak.png")
     save_figure_variants(fig, out)
@@ -751,7 +969,7 @@ def plot_combined_strong_weak(df):
     return out
 
 def plot_decile_curve(decile_df):
-    """带有平滑阴影误差带的分层曲线 (Shaded Error Bands)"""
+    """甯︽湁骞虫粦闃村奖璇樊甯︾殑鍒嗗眰鏇茬嚎 (Shaded Error Bands)"""
     if decile_df.empty: return None
 
     fig, ax = plt.subplots(figsize=(6, 4.5))
@@ -761,9 +979,9 @@ def plot_decile_curve(decile_df):
         if sub.empty: continue
         agg = sub.groupby("Decile_Index")["Mean_Correlation"].agg(['mean', 'sem'])
         
-        # 主线
+        # 涓荤嚎
         ax.plot(agg.index, agg['mean'], label=cond, color=COLORS[cond], lw=2.5, marker='o', markersize=6, markeredgecolor='white')
-        # 阴影带
+        # 闃村奖甯?
         ax.fill_between(agg.index, agg['mean'] - agg['sem'], agg['mean'] + agg['sem'], 
                         color=COLORS[cond], alpha=0.2, edgecolor="none")
 
@@ -805,158 +1023,550 @@ def plot_noise_decile_curve(noise_decile_df):
     plt.close(fig)
     return out
 
+
+def plot_geometry_condition_metric(geometry_df, metric, ylabel, save_name):
+    if geometry_df is None or geometry_df.empty or metric not in geometry_df.columns:
+        return None
+    sub = geometry_df[["mouse_id", "Condition", metric]].dropna().copy()
+    if sub.empty:
+        return None
+    sub["Condition"] = pd.Categorical(sub["Condition"], categories=CONDITIONS, ordered=True)
+    order = CONDITIONS
+    x_pos = np.arange(len(order))
+
+    fig, ax = plt.subplots(figsize=(5.0, 4.8))
+    sns.violinplot(
+        data=sub,
+        x="Condition",
+        y=metric,
+        order=order,
+        hue="Condition",
+        hue_order=order,
+        palette=COLORS,
+        inner="quartile",
+        cut=0,
+        linewidth=1.0,
+        alpha=0.25,
+        legend=False,
+        ax=ax,
+    )
+
+    piv = (
+        sub.pivot_table(index="mouse_id", columns="Condition", values=metric, aggfunc="mean")
+        .reindex(columns=order)
+    )
+    for _, row in piv.iterrows():
+        y = row.values.astype(float)
+        m = ~np.isnan(y)
+        if m.sum() >= 2:
+            ax.plot(x_pos[m], y[m], color="#AAA49A", lw=0.8, alpha=0.55, zorder=2)
+
+    sns.stripplot(
+        data=sub,
+        x="Condition",
+        y=metric,
+        order=order,
+        hue="Condition",
+        hue_order=order,
+        palette=COLORS,
+        dodge=False,
+        size=4.0,
+        alpha=0.75,
+        edgecolor="white",
+        linewidth=0.6,
+        legend=False,
+        ax=ax,
+    )
+
+    means = sub.groupby("Condition")[metric].mean().reindex(order)
+    sems = sub.groupby("Condition")[metric].sem().reindex(order)
+    for i, cond in enumerate(order):
+        if pd.isna(means[cond]):
+            continue
+        ax.errorbar(
+            i + 0.16,
+            means[cond],
+            yerr=sems[cond],
+            fmt="o",
+            color="#2F2F2F",
+            ecolor="#2F2F2F",
+            markersize=5.5,
+            lw=2.0,
+            capsize=0,
+            zorder=5,
+        )
+
+    ax.set_xlabel("")
+    ax.set_ylabel(ylabel)
+    ax.set_title(ylabel)
+    style_axis(ax)
+    out = os.path.join(GROUP_OUT_DIR, save_name)
+    save_figure_variants(fig, out)
+    plt.close(fig)
+    return out
+
+
+def plot_geometry_vs_rsm(master_df, x_col, xlabel, save_name):
+    need_cols = {"mouse_id", "Condition", "Mean_RSM_Sim", x_col}
+    if master_df is None or master_df.empty or not need_cols.issubset(set(master_df.columns)):
+        return None
+    sub = master_df[["mouse_id", "Condition", "Mean_RSM_Sim", x_col]].dropna().copy()
+    if sub.empty:
+        return None
+    sub["Condition"] = pd.Categorical(sub["Condition"], categories=CONDITIONS, ordered=True)
+
+    fig, ax = plt.subplots(figsize=(5.4, 4.8))
+    sns.regplot(
+        data=sub,
+        x=x_col,
+        y="Mean_RSM_Sim",
+        scatter=False,
+        color="#444444",
+        line_kws={"linewidth": 2.0, "linestyle": "--", "alpha": 0.8},
+        ax=ax,
+    )
+    sns.scatterplot(
+        data=sub,
+        x=x_col,
+        y="Mean_RSM_Sim",
+        hue="Condition",
+        palette=COLORS,
+        s=68,
+        alpha=0.9,
+        edgecolor="white",
+        linewidth=0.8,
+        ax=ax,
+    )
+
+    try:
+        lr = stats.linregress(sub[x_col].values, sub["Mean_RSM_Sim"].values)
+        text = f"slope={lr.slope:.4f}\np={lr.pvalue:.3e}"
+    except Exception:
+        text = "slope=NA\np=NA"
+    ax.text(
+        0.03,
+        0.97,
+        text,
+        transform=ax.transAxes,
+        va="top",
+        ha="left",
+        fontsize=10,
+        bbox=dict(boxstyle="round", facecolor="white", alpha=0.85, edgecolor="#D0D0D0"),
+    )
+
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel("Mean RSM similarity")
+    ax.set_title(f"Mean RSM vs {xlabel}")
+    style_axis(ax)
+    ax.legend(frameon=False, title="")
+
+    out = os.path.join(GROUP_OUT_DIR, save_name)
+    save_figure_variants(fig, out)
+    plt.close(fig)
+    return out
+
+
+def plot_shuffle_orig_vs_shuffled(core_df, metric, ylabel, stat_df=None):
+    mc = summarize_shuffle_mouse_condition(core_df)
+    if mc.empty or metric not in mc.columns:
+        return None
+    sub = mc[["mouse_id", "Condition", "data_type", metric]].dropna().copy()
+    if sub.empty:
+        return None
+
+    sub["Condition"] = pd.Categorical(sub["Condition"], categories=CONDITIONS, ordered=True)
+    order = CONDITIONS
+    hue_order = ["original", "shuffled"]
+    pal = {"original": "#2F4858", "shuffled": "#9AA5B1"}
+
+    fig, ax = plt.subplots(figsize=(6.5, 4.6))
+    sns.boxplot(
+        data=sub, x="Condition", y=metric, hue="data_type",
+        order=order, hue_order=hue_order, palette=pal,
+        width=0.62, showfliers=False, linewidth=1.2, ax=ax
+    )
+    sns.stripplot(
+        data=sub, x="Condition", y=metric, hue="data_type",
+        order=order, hue_order=hue_order, palette=pal,
+        dodge=True, size=3, alpha=0.45, linewidth=0, ax=ax
+    )
+    # remove duplicated legend from box+strip
+    handles, labels = ax.get_legend_handles_labels()
+    if handles:
+        uniq = []
+        used = set()
+        for h, l in zip(handles, labels):
+            if l in used:
+                continue
+            used.add(l)
+            uniq.append((h, l))
+        ax.legend([h for h, _ in uniq], [l for _, l in uniq], frameon=False, title="", loc="best")
+
+    if stat_df is not None and not stat_df.empty:
+        s = stat_df[stat_df["metric"] == metric].copy()
+        p_map = {r["Condition"]: r.get("wilcoxon_p", np.nan) for _, r in s.iterrows() if "Condition" in s.columns}
+        y_top = sub[metric].max()
+        y_step = max((sub[metric].max() - sub[metric].min()) * 0.08, 1e-4)
+        for i, cond in enumerate(order):
+            p = p_map.get(cond, np.nan)
+            star = p_to_star(p)
+            if star == "ns":
+                continue
+            ax.text(i, y_top + y_step, star, ha="center", va="bottom", fontsize=12, fontweight="bold")
+        ax.set_ylim(top=y_top + y_step * 2.2)
+
+    ax.set_xlabel("")
+    ax.set_ylabel(ylabel)
+    ax.set_title(f"{metric}: Original vs Shuffled")
+    style_axis(ax)
+
+    out = os.path.join(GROUP_OUT_DIR, f"group_shuffle_orig_vs_shuffled_{metric}.png")
+    save_figure_variants(fig, out)
+    plt.close(fig)
+    return out
+
+
+def plot_shuffle_condition_only(core_df, metric, ylabel, data_type="shuffled", stat_df=None):
+    mc = summarize_shuffle_mouse_condition(core_df)
+    if mc.empty or metric not in mc.columns:
+        return None
+    sub = mc[mc["data_type"] == data_type][["mouse_id", "Condition", metric]].dropna().copy()
+    if sub.empty:
+        return None
+
+    sub["Condition"] = pd.Categorical(sub["Condition"], categories=CONDITIONS, ordered=True)
+    fig, ax = plt.subplots(figsize=(5.8, 4.6))
+    sns.boxplot(
+        data=sub, x="Condition", y=metric, hue="Condition",
+        palette=COLORS, legend=False, width=0.62, showfliers=False, linewidth=1.2, ax=ax
+    )
+    sns.stripplot(
+        data=sub, x="Condition", y=metric, color="#333333",
+        alpha=0.55, size=3.5, jitter=0.14, ax=ax
+    )
+
+    title = f"{metric}: {data_type.capitalize()} condition differences"
+    if stat_df is not None and not stat_df.empty:
+        row = stat_df[(stat_df["metric"] == metric) & (stat_df["data_type"] == data_type)]
+        if not row.empty and pd.notna(row.iloc[0].get("p_main", np.nan)):
+            title += f"\nMain p={row.iloc[0]['p_main']:.3e}"
+    ax.set_title(title)
+    ax.set_xlabel("")
+    ax.set_ylabel(ylabel)
+    style_axis(ax)
+
+    out = os.path.join(GROUP_OUT_DIR, f"group_shuffle_condition_{data_type}_{metric}.png")
+    save_figure_variants(fig, out)
+    plt.close(fig)
+    return out
+
+
+def plot_shuffle_dose_response_group(dose_df, metric, ylabel):
+    if dose_df is None or dose_df.empty or metric not in dose_df.columns:
+        return None
+    if "Condition" not in dose_df.columns or "shuffle_fraction" not in dose_df.columns:
+        return None
+
+    # mean over repeats within each mouse first (avoid pseudo-replication)
+    per_mouse = (
+        dose_df.groupby(["mouse_id", "Condition", "shuffle_fraction"], as_index=False)[metric]
+        .mean(numeric_only=True)
+    )
+    if per_mouse.empty:
+        return None
+
+    fig, ax = plt.subplots(figsize=(6.2, 4.8))
+    for cond in CONDITIONS:
+        sub = per_mouse[per_mouse["Condition"] == cond]
+        if sub.empty:
+            continue
+        agg = sub.groupby("shuffle_fraction")[metric].agg(["mean", "sem"]).reset_index()
+        ax.plot(agg["shuffle_fraction"], agg["mean"], marker="o", lw=2.2, color=COLORS[cond], label=cond)
+        ax.fill_between(
+            agg["shuffle_fraction"],
+            agg["mean"] - agg["sem"],
+            agg["mean"] + agg["sem"],
+            color=COLORS[cond], alpha=0.18, linewidth=0
+        )
+    ax.set_xlabel("Shuffle Fraction")
+    ax.set_ylabel(ylabel)
+    ax.set_title(f"Dose-response: {metric}")
+    ax.set_xticks(sorted(per_mouse["shuffle_fraction"].dropna().unique()))
+    style_axis(ax)
+    ax.legend(frameon=False, title="")
+
+    out = os.path.join(GROUP_OUT_DIR, f"group_shuffle_dose_{metric}.png")
+    save_figure_variants(fig, out)
+    plt.close(fig)
+    return out
+
+
+def plot_shuffle_delta_group(delta_df):
+    if delta_df is None or delta_df.empty:
+        return None
+    need = {"Condition", "metric", "delta_shuffle"}
+    if not need.issubset(set(delta_df.columns)):
+        return None
+
+    per_mouse = (
+        delta_df.groupby(["mouse_id", "Condition", "metric"], as_index=False)["delta_shuffle"]
+        .mean(numeric_only=True)
+    )
+    if per_mouse.empty:
+        return None
+
+    metrics = list(per_mouse["metric"].dropna().unique())
+    if not metrics:
+        return None
+
+    n = len(metrics)
+    ncols = 2 if n > 1 else 1
+    nrows = int(np.ceil(n / ncols))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(5.2 * ncols, 4.3 * nrows), dpi=180)
+    axes = np.atleast_1d(axes).ravel()
+
+    for i, metric in enumerate(metrics):
+        ax = axes[i]
+        sub = per_mouse[per_mouse["metric"] == metric].copy()
+        sns.boxplot(
+            data=sub, x="Condition", y="delta_shuffle", hue="Condition",
+            palette=COLORS, legend=False, showfliers=False, linewidth=1.2, ax=ax
+        )
+        sns.stripplot(
+            data=sub, x="Condition", y="delta_shuffle", color="#303030",
+            size=3.5, jitter=0.14, alpha=0.55, ax=ax
+        )
+        ax.axhline(0, color="#777777", lw=1, ls="--")
+        ax.set_xlabel("")
+        ax.set_ylabel("Delta")
+        ax.set_title(metric)
+        style_axis(ax)
+
+    for j in range(len(metrics), len(axes)):
+        axes[j].set_axis_off()
+
+    fig.suptitle("Shuffle Delta by Condition", y=1.02)
+    out = os.path.join(GROUP_OUT_DIR, "group_shuffle_delta_by_condition.png")
+    save_figure_variants(fig, out)
+    plt.close(fig)
+    return out
+
+
+def plot_shuffle_sync_contribution_group(sync_df, stat_df=None):
+    if sync_df is None or sync_df.empty:
+        return None
+
+    work = sync_df.copy()
+    if "mouse_id" not in work.columns and "mouse" in work.columns:
+        work["mouse_id"] = work["mouse"].astype(str)
+
+    if "sync_contribution_abs" not in work.columns:
+        if {"abs_contrast_original", "abs_contrast_shuffled_mean"}.issubset(set(work.columns)):
+            work["sync_contribution_abs"] = (
+                pd.to_numeric(work["abs_contrast_original"], errors="coerce")
+                - pd.to_numeric(work["abs_contrast_shuffled_mean"], errors="coerce")
+            )
+        else:
+            return None
+
+    plot_df = (
+        work.groupby(["mouse_id", "metric"], as_index=False)["sync_contribution_abs"]
+        .mean(numeric_only=True)
+        .dropna()
+    )
+    if plot_df.empty:
+        return None
+
+    metric_order = [
+        m for m in ["weak_corr", "strong_weak_gap", "mean_rsm", "strong_corr", "mean_corr", "pr_mean", "gini_mean", "participants_ratio"]
+        if m in set(plot_df["metric"].astype(str))
+    ]
+    if not metric_order:
+        metric_order = sorted(plot_df["metric"].astype(str).unique().tolist())
+
+    fig, ax = plt.subplots(figsize=(7.2, max(4.2, 0.72 * len(metric_order) + 1.8)), dpi=180)
+    sns.boxplot(
+        data=plot_df,
+        y="metric",
+        x="sync_contribution_abs",
+        order=metric_order,
+        color="#D6DDE4",
+        linewidth=1.2,
+        fliersize=0,
+        width=0.58,
+        ax=ax,
+    )
+    sns.stripplot(
+        data=plot_df,
+        y="metric",
+        x="sync_contribution_abs",
+        order=metric_order,
+        color="#2E3A46",
+        size=4.6,
+        alpha=0.75,
+        jitter=0.16,
+        ax=ax,
+    )
+
+    means = plot_df.groupby("metric")["sync_contribution_abs"].mean().reindex(metric_order)
+    sems = plot_df.groupby("metric")["sync_contribution_abs"].sem().reindex(metric_order)
+    y_idx = np.arange(len(metric_order))
+    ax.errorbar(
+        means.values,
+        y_idx,
+        xerr=sems.values,
+        fmt="o",
+        color="#8C4A3E",
+        ecolor="#8C4A3E",
+        elinewidth=2.0,
+        capsize=0,
+        markersize=6.2,
+        zorder=5,
+    )
+
+    ax.axvline(0, color="#666666", lw=1.0, ls="--")
+    ax.set_xlabel("Synchrony Contribution (|Random - Coherent|: original - shuffled mean)")
+    ax.set_ylabel("Metric")
+    ax.set_title("Shuffle Synchrony Contribution Across Mice")
+    style_axis(ax)
+
+    if stat_df is not None and not stat_df.empty and "metric" in stat_df.columns:
+        stat_map = stat_df.set_index("metric")
+        x_max = np.nanmax(plot_df["sync_contribution_abs"].values)
+        x_min = np.nanmin(plot_df["sync_contribution_abs"].values)
+        x_span = max(1e-9, x_max - x_min)
+        x_text = x_max + 0.05 * x_span
+        for yi, metric in enumerate(metric_order):
+            if metric not in stat_map.index:
+                continue
+            p_val = stat_map.loc[metric, "wilcoxon_p_one_sided_greater"] if "wilcoxon_p_one_sided_greater" in stat_map.columns else np.nan
+            if isinstance(p_val, pd.Series):
+                p_val = p_val.iloc[0]
+            ax.text(x_text, yi, f"p={p_val:.3g}" if pd.notna(p_val) else "p=NA", va="center", ha="left", fontsize=9, color="#303030")
+        ax.set_xlim(x_min - 0.08 * x_span, x_max + 0.23 * x_span)
+
+    out = os.path.join(GROUP_OUT_DIR, "group_shuffle_sync_contribution_abs.png")
+    save_figure_variants(fig, out)
+    plt.close(fig)
+    return out
+
 # ==========================================
-# 5. Markdown 报告自动生成模块
+# 5. Markdown 鎶ュ憡鑷姩鐢熸垚妯″潡
 # ==========================================
 def generate_group_markdown(
     master_df,
     stat_results,
     image_paths,
     rr_overlap_df,
-    table_paths=None,
-    decoder_chain_summary_df=None,
-    decoder_chain_stats_df=None,
+    shuffle_payload=None,
+    geometry_payload=None,
 ):
     md_path = os.path.join(GROUP_OUT_DIR, "Group_Analysis_Report.md")
-    table_paths = table_paths or {}
-
-    def _fmt(v, digits=4):
-        return "NA" if pd.isna(v) else f"{v:.{digits}f}"
-
+    
+    # 蹇界暐 FutureWarning (observed=False)
     numeric_cols = [c for c in master_df.columns if c not in ["mouse_id", "Condition"] and pd.api.types.is_numeric_dtype(master_df[c])]
     summary_df = master_df.groupby("Condition", observed=False)[numeric_cols].agg(["mean", "sem"]).round(4)
 
-    desc = pd.DataFrame(index=summary_df.index)
-    for col in summary_df.columns.levels[0]:
-        desc[col] = [f"{_fmt(m)} ± {_fmt(s)}" for m, s in zip(summary_df[col]["mean"], summary_df[col]["sem"])]
-    desc = desc.reset_index()
-
-    stat_rows = []
-    for metric, res in stat_results.items():
-        ph = res.get("post_hoc", {})
-        stat_rows.append(
-            {
-                "Metric": metric,
-                "Main_Effect": res.get("main_effect", "N/A"),
-                "p_main": res.get("p_main", np.nan),
-                "Main_Star": p_to_star(res.get("p_main", np.nan)),
-                "Div_vs_Con": ph.get("Divergent vs Convergent", np.nan),
-                "Div_vs_Rand": ph.get("Divergent vs Random", np.nan),
-                "Con_vs_Rand": ph.get("Convergent vs Random", np.nan),
-            }
-        )
-    stat_df = pd.DataFrame(stat_rows).sort_values(by="p_main", na_position="last") if stat_rows else pd.DataFrame()
-
     with open(md_path, "w", encoding="utf-8") as f:
         f.write("# Group-level Multi-mouse Analysis Report\n\n")
-        f.write("## 1. Dataset Overview\n\n")
-        f.write(f"- Number of mice: {master_df['mouse_id'].nunique()}\n")
-        f.write(f"- Mouse IDs: {', '.join(sorted(master_df['mouse_id'].unique()))}\n")
-        f.write(f"- Conditions: {', '.join(CONDITIONS)}\n\n")
+        f.write(f"**Number of mice**: {master_df['mouse_id'].nunique()}\n\n")
+        f.write(f"**Mouse IDs**: {', '.join(sorted(master_df['mouse_id'].unique()))}\n\n")
 
-        f.write("## 2. Exported Data Tables\n\n")
-        if table_paths:
-            for name, path in table_paths.items():
-                f.write(f"- {name}: `{os.path.basename(path)}`\n")
-        else:
-            f.write("- No external tables exported in this run.\n")
+        f.write("## 1. Descriptive Statistics (Mean 卤 SEM)\n\n")
+        desc = pd.DataFrame(index=summary_df.index)
+        for col in summary_df.columns.levels[0]:
+            desc[col] = summary_df[col]["mean"].astype(str) + " 卤 " + summary_df[col]["sem"].astype(str)
+        f.write(df_to_md(desc.reset_index()) + "\n\n")
+
+        f.write("## 2. Friedman + Wilcoxon Tests\n\n")
+        f.write("| Metric | Main Effect | Div vs Con | Div vs Rand | Con vs Rand |\n")
+        f.write("| :--- | :--- | :--- | :--- | :--- |\n")
+        for metric, res in stat_results.items():
+            ph = res.get("post_hoc", {})
+            f.write(
+                f"| **{metric}** | {res.get('main_effect', 'N/A')} | "
+                f"p={ph.get('Divergent vs Convergent', np.nan):.4f} ({p_to_star(ph.get('Divergent vs Convergent', np.nan))}) | "
+                f"p={ph.get('Divergent vs Random', np.nan):.4f} ({p_to_star(ph.get('Divergent vs Random', np.nan))}) | "
+                f"p={ph.get('Convergent vs Random', np.nan):.4f} ({p_to_star(ph.get('Convergent vs Random', np.nan))}) |\n"
+            )
         f.write("\n")
 
-        f.write("## 3. Descriptive Statistics (Mean ± SEM)\n\n")
-        f.write(df_to_markdown(desc, index=False) + "\n\n")
-
-        f.write("## 4. Friedman + Wilcoxon Tests\n\n")
-        if stat_df.empty:
-            f.write("No valid condition-level tests were computed.\n\n")
-        else:
-            stat_disp = stat_df.copy()
-            for c in ["p_main", "Div_vs_Con", "Div_vs_Rand", "Con_vs_Rand"]:
-                stat_disp[c] = stat_disp[c].map(lambda x: _fmt(x, digits=4))
-            f.write(df_to_markdown(stat_disp, index=False) + "\n\n")
-
-        section_idx = 5
         if not rr_overlap_df.empty:
-            f.write(f"## {section_idx}. RR Overlap Summary Across Mice\n\n")
-            rr_summary = rr_overlap_df.groupby("Subset", as_index=False).agg(
-                Mean_Size=("Subset_Size", "mean"),
-                SEM_Size=("Subset_Size", "sem"),
-            )
-            rr_summary["Mean_Size"] = rr_summary["Mean_Size"].round(4)
-            rr_summary["SEM_Size"] = rr_summary["SEM_Size"].round(4)
-            f.write(df_to_markdown(rr_summary, index=False) + "\n\n")
-            section_idx += 1
+            f.write("## 3. RR Overlap Summary Across Mice\n\n")
+            rr_summary = rr_overlap_df.groupby("Subset", as_index=False).agg(Mean_Size=("Subset_Size", "mean"), SEM_Size=("Subset_Size", "sem"))
+            f.write(df_to_md(rr_summary) + "\n\n")
 
-        if decoder_chain_summary_df is not None and not decoder_chain_summary_df.empty:
-            f.write(f"## {section_idx}. Decoder Chain Summary (Tasks 1-6)\n\n")
-            f.write(df_to_markdown(decoder_chain_summary_df, index=False) + "\n\n")
-            section_idx += 1
+        if shuffle_payload is not None:
+            ov = shuffle_payload.get("orig_vs_shuffled_stats", pd.DataFrame())
+            cs = shuffle_payload.get("condition_stats", pd.DataFrame())
+            sc = shuffle_payload.get("sync_contribution_stats", pd.DataFrame())
+            csv_paths = shuffle_payload.get("csv_paths", {})
+            if ov is not None and not ov.empty:
+                f.write("## 4. Shuffle: Original vs Shuffled (Across Mice)\n\n")
+                f.write(df_to_md(ov) + "\n\n")
+            if cs is not None and not cs.empty:
+                f.write("## 5. Shuffle: Condition Differences in Shuffled Surrogates\n\n")
+                f.write(df_to_md(cs) + "\n\n")
+            if sc is not None and not sc.empty:
+                f.write("## 6. Shuffle: Synchrony Contribution (Random - Coherent)\n\n")
+                f.write(df_to_md(sc) + "\n\n")
+            if csv_paths:
+                f.write("## 7. Group Shuffle Output Files\n\n")
+                for k, p in csv_paths.items():
+                    f.write(f"- {k}: `{p}`\n")
+                f.write("\n")
 
-        if decoder_chain_stats_df is not None and not decoder_chain_stats_df.empty:
-            f.write(f"## {section_idx}. Decoder Chain Statistical Tests (Tasks 1-6)\n\n")
-            stat_local = decoder_chain_stats_df.copy()
-            for c in ["Mean_Delta", "SEM_Delta", "p_value"]:
-                if c in stat_local.columns:
-                    stat_local[c] = stat_local[c].map(lambda x: _fmt(x, digits=4))
-            f.write(df_to_markdown(stat_local, index=False) + "\n\n")
-            section_idx += 1
+        if geometry_payload is not None:
+            g_cond = geometry_payload.get("condition_long", pd.DataFrame())
+            g_pair = geometry_payload.get("pairwise_long", pd.DataFrame())
+            g_model = geometry_payload.get("model_compare", pd.DataFrame())
+            g_paths = geometry_payload.get("csv_paths", {})
+            if g_cond is not None and not g_cond.empty:
+                f.write("## Geometry Condition-level Table\n\n")
+                f.write(df_to_md(g_cond) + "\n\n")
+            if g_pair is not None and not g_pair.empty:
+                f.write("## Geometry Pairwise Bootstrap Table\n\n")
+                f.write(df_to_md(g_pair) + "\n\n")
+            if g_model is not None and not g_model.empty:
+                f.write("## Geometry Mixed-model Summary Table\n\n")
+                f.write(df_to_md(g_model) + "\n\n")
+            if g_paths:
+                f.write("## Geometry Output Files\n\n")
+                for k, p in g_paths.items():
+                    f.write(f"- {k}: `{p}`\n")
+                f.write("\n")
 
-        f.write(f"## {section_idx}. Figures\n\n")
-        figure_groups = [
-            ("Core and Correlation Metrics", [
-                "Combined Strong vs Weak",
-                "RSM Mean Similarity",
-                "Strong Connections (Top 10%)",
-                "Weak Connections (Bottom 10%)",
-                "Strong-Weak Correlation Gap",
-                "RR Participants Ratio",
-                "Response Gini (Mean)",
-                "Decile Correlation Curve",
-                "Noise Decile Curve",
-            ]),
-            ("Binding Analyses", ["Cross-animal Binding", "Absolute State Binding", "LMM State Binding"]),
-            ("Decoder Chain (Tasks 1-6)", [
-                "Decoder Accuracy (Task1+Task3)",
-                "Decoder Ablation (Task2)",
-                "Edge Ablation Robustness (Task4)",
-                "Edge Decile Enrichment (Task5)",
-                "Neuron Linking (Task6)",
-            ]),
-        ]
-        for group_name, names in figure_groups:
-            available = [name for name in names if image_paths.get(name)]
-            if not available:
-                continue
-            f.write(f"### {group_name}\n\n")
-            for name in available:
-                rel = os.path.basename(image_paths[name])
-                f.write(f"#### {name}\n![{name}](./{rel})\n\n")
-
+        f.write("## 8. Figures\n\n")
+        for name, path in image_paths.items():
+            if path is None: continue
+            rel = os.path.basename(path)
+            f.write(f"### {name}\n![{name}](./{rel})\n\n")
     print(f"[*] Group markdown report written to: {md_path}")
 
 def plot_cross_animal_binding(df):
-    # 确保需要的列存在
+    # 纭繚闇€瑕佺殑鍒楀瓨鍦?
     required_cols = ["Gini_Mean", "Mean_RSM_Sim"]
     if not all(c in df.columns for c in required_cols):
         print("Missing columns for cross-animal binding.")
         return None
 
-    # 提取所需数据
+    # 鎻愬彇鎵€闇€鏁版嵁
     sub = df[["mouse_id", "Condition", "Participants_Ratio", "Mean_RSM_Sim"]].dropna().copy()
     
-    # 将数据透视，每只小鼠一行
-    pivot_gini = sub.pivot(index="mouse_id", columns="Condition", values="Participants_Ratio")
-    pivot_rsm = sub.pivot(index="mouse_id", columns="Condition", values="Mean_RSM_Sim")
+    # 灏嗘暟鎹€忚锛屾瘡鍙皬榧犱竴琛?
+    pivot_gini = sub.pivot_table(index="mouse_id", columns="Condition", values="Participants_Ratio", aggfunc="mean")
+    pivot_rsm = sub.pivot_table(index="mouse_id", columns="Condition", values="Mean_RSM_Sim", aggfunc="mean")
     
-    # 确保三个条件都存在
+    # 纭繚涓変釜鏉′欢閮藉瓨鍦?
     for cond in ["Divergent", "Convergent", "Random"]:
         if cond not in pivot_gini.columns or cond not in pivot_rsm.columns:
             return None
 
-    # 计算 Coherent Motion 的均值
+    # 璁＄畻 Coherent Motion 鐨勫潎鍊?
     pivot_gini["Coherent"] = pivot_gini[["Divergent", "Convergent"]].mean(axis=1)
     pivot_rsm["Coherent"] = pivot_rsm[["Divergent", "Convergent"]].mean(axis=1)
 
-    # 计算调制量 (Delta = Coherent - Random)
+    # 璁＄畻璋冨埗閲?(Delta = Coherent - Random)
     delta_df = pd.DataFrame(index=pivot_gini.index)
     delta_df["Delta_Participants_Ratio"] = pivot_gini["Coherent"] - pivot_gini["Random"]
     delta_df["Delta_RSM"] = pivot_rsm["Coherent"] - pivot_rsm["Random"]
@@ -965,14 +1575,14 @@ def plot_cross_animal_binding(df):
     if len(delta_df) < 3:
         return None
 
-    # 统计检验 (Spearman for robustness, Pearson for reference)
+    # 缁熻妫€楠?(Spearman for robustness, Pearson for reference)
     spearman_r, spearman_p = stats.spearmanr(delta_df["Delta_Participants_Ratio"], delta_df["Delta_RSM"])
     pearson_r, pearson_p = stats.pearsonr(delta_df["Delta_Participants_Ratio"], delta_df["Delta_RSM"])
 
-    # 开始绘图
+    # 寮€濮嬬粯鍥?
     fig, ax = plt.subplots(figsize=(5.5, 5))
     
-    # 修复了 seaborn 和 matplotlib 之间的 linewidth 别名冲突报错
+    # 淇浜?seaborn 鍜?matplotlib 涔嬮棿鐨?linewidth 鍒悕鍐茬獊鎶ラ敊
     sns.regplot(
         data=delta_df, x="Delta_Participants_Ratio", y="Delta_RSM",
         ax=ax, color="#404040", 
@@ -980,23 +1590,23 @@ def plot_cross_animal_binding(df):
         line_kws={"linewidth": 2, "color": "#202020", "alpha": 0.8}
     )
 
-    # 在图中标注每只鼠的 ID（帮助检查 outlier）
+    # 鍦ㄥ浘涓爣娉ㄦ瘡鍙紶鐨?ID锛堝府鍔╂鏌?outlier锛?
     for mouse_id, row in delta_df.iterrows():
         ax.annotate(mouse_id, (row["Delta_Participants_Ratio"], row["Delta_RSM"]), 
                     xytext=(5, 5), textcoords='offset points', 
                     fontsize=8, color="#606060", alpha=0.7)
 
-    # 添加统计结果文本框
+    # 娣诲姞缁熻缁撴灉鏂囨湰妗?
     stat_text = (f"Spearman $r_s$ = {spearman_r:.2f}, $p$ = {spearman_p:.3f}\n"
                  f"Pearson $r$ = {pearson_r:.2f}, $p$ = {pearson_p:.3f}")
     ax.text(0.05, 0.95, stat_text, transform=ax.transAxes, fontsize=11,
             verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='#CCCCCC'))
 
-    # 增加过零点的辅助线
+    # 澧炲姞杩囬浂鐐圭殑杈呭姪绾?
     ax.axhline(0, color="gray", linestyle="--", linewidth=1, alpha=0.5, zorder=0)
     ax.axvline(0, color="gray", linestyle="--", linewidth=1, alpha=0.5, zorder=0)
 
-    # 美化坐标轴，加上 r 前缀修复 \Delta 警告
+    # 缇庡寲鍧愭爣杞达紝鍔犱笂 r 鍓嶇紑淇 \Delta 璀﹀憡
     ax.set_xlabel(r"$\Delta$ Response Inequality (Participants$_{Coherent}$ - Participants$_{Random}$)")
     ax.set_ylabel(r"$\Delta$ Representational Stability (RSM$_{Coherent}$ - RSM$_{Random}$)")
     ax.set_title("Cross-Animal Binding", pad=15)
@@ -1009,54 +1619,54 @@ def plot_cross_animal_binding(df):
 
 def plot_absolute_state_binding(df):
     """
-    计算并绘制绝对状态的跨条件定量耦合分析 (Absolute State Space Binding)
-    使用: Absolute Participants_Ratio vs Absolute Mean_RSM_Sim (N=24 data points)
+    璁＄畻骞剁粯鍒剁粷瀵圭姸鎬佺殑璺ㄦ潯浠跺畾閲忚€﹀悎鍒嗘瀽 (Absolute State Space Binding)
+    浣跨敤: Absolute Participants_Ratio vs Absolute Mean_RSM_Sim (N=24 data points)
     """
     required_cols = ["Participants_Ratio", "Mean_RSM_Sim"]
     if not all(c in df.columns for c in required_cols):
         return None
 
-    # 提取所有小鼠在所有条件下的绝对值 (8 * 3 = 24 data points)
+    # 鎻愬彇鎵€鏈夊皬榧犲湪鎵€鏈夋潯浠朵笅鐨勭粷瀵瑰€?(8 * 3 = 24 data points)
     plot_df = df[["mouse_id", "Condition", "Participants_Ratio", "Mean_RSM_Sim"]].dropna().copy()
     plot_df["Condition"] = pd.Categorical(plot_df["Condition"], categories=CONDITIONS, ordered=True)
 
     if len(plot_df) < 5:
         return None
 
-    # 整体相关性检验 (N=24)
+    # 鏁翠綋鐩稿叧鎬ф楠?(N=24)
     spearman_r, spearman_p = stats.spearmanr(plot_df["Participants_Ratio"], plot_df["Mean_RSM_Sim"])
     pearson_r, pearson_p = stats.pearsonr(plot_df["Participants_Ratio"], plot_df["Mean_RSM_Sim"])
 
     fig, ax = plt.subplots(figsize=(6, 5))
 
-    # 1. 绘制底层的整体线性回归线 (不区分条件)
+    # 1. 缁樺埗搴曞眰鐨勬暣浣撶嚎鎬у洖褰掔嚎 (涓嶅尯鍒嗘潯浠?
     sns.regplot(
         data=plot_df, x="Participants_Ratio", y="Mean_RSM_Sim",
         scatter=False, ax=ax, color="#404040", 
         line_kws={"linewidth": 2, "linestyle": "--", "alpha": 0.6}
     )
 
-    # 2. 绘制散点，按照条件上色 (区分三种网络状态)
+    # 2. 缁樺埗鏁ｇ偣锛屾寜鐓ф潯浠朵笂鑹?(鍖哄垎涓夌缃戠粶鐘舵€?
     sns.scatterplot(
         data=plot_df, x="Participants_Ratio", y="Mean_RSM_Sim",
         hue="Condition", palette=COLORS, s=70, alpha=0.85, 
         edgecolor="white", linewidth=1, ax=ax, zorder=3
     )
 
-    # 添加统计结果文本框
+    # 娣诲姞缁熻缁撴灉鏂囨湰妗?
     stat_text = (f"Overall Correlation (N={len(plot_df)} states)\n"
                  f"Spearman $r_s$ = {spearman_r:.2f}, $p$ = {spearman_p:.3e}\n"
                  f"Pearson $r$ = {pearson_r:.2f}, $p$ = {pearson_p:.3e}")
     ax.text(0.05, 0.95, stat_text, transform=ax.transAxes, fontsize=11,
             verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='#CCCCCC'))
 
-    # 美化坐标轴
+    # 缇庡寲鍧愭爣杞?
     ax.set_xlabel("Response Concentration (Participants Ratio)")
     ax.set_ylabel("Trial-to-Trial Population Stability (Mean RSM)")
     ax.set_title("Global State-Space Binding", pad=15)
     style_axis(ax)
     
-    # 调整图例
+    # 璋冩暣鍥句緥
     ax.legend(title="", frameon=False, loc="lower right")
 
     out = os.path.join(GROUP_OUT_DIR, "group_absolute_state_binding.png")
@@ -1066,8 +1676,8 @@ def plot_absolute_state_binding(df):
 
 def plot_lmm_state_binding(df):
     """
-    终极版：使用线性混合效应模型 (LMM) 控制鼠内重复测量。
-    模型: RSM ~ Participants_Ratio + (1 | mouse_id)
+    缁堟瀬鐗堬細浣跨敤绾挎€ф贩鍚堟晥搴旀ā鍨?(LMM) 鎺у埗榧犲唴閲嶅娴嬮噺銆?
+    妯″瀷: RSM ~ Participants_Ratio + (1 | mouse_id)
     """
     required_cols = ["Participants_Ratio", "Mean_RSM_Sim"]
     if not all(c in df.columns for c in required_cols):
@@ -1080,8 +1690,8 @@ def plot_lmm_state_binding(df):
         return None
 
     # ==========================================
-    # 1. 拟合线性混合效应模型 (LMM)
-    # 随机截距模型: 控制每只鼠自身的 baseline
+    # 1. 鎷熷悎绾挎€ф贩鍚堟晥搴旀ā鍨?(LMM)
+    # 闅忔満鎴窛妯″瀷: 鎺у埗姣忓彧榧犺嚜韬殑 baseline
     # ==========================================
     md = smf.mixedlm("Mean_RSM_Sim ~ Participants_Ratio", plot_df, groups=plot_df["mouse_id"])
     mdf = md.fit()
@@ -1093,28 +1703,28 @@ def plot_lmm_state_binding(df):
     fig, ax = plt.subplots(figsize=(6, 5.5))
 
     # ==========================================
-    # 2. 绘制可视化：个体拟合线 (Random Intercepts)
-    # 这将向审稿人完美展示“鼠内协变 (within-mouse covariance)”
+    # 2. 缁樺埗鍙鍖栵細涓綋鎷熷悎绾?(Random Intercepts)
+    # 杩欏皢鍚戝绋夸汉瀹岀編灞曠ず鈥滈紶鍐呭崗鍙?(within-mouse covariance)鈥?
     # ==========================================
     x_vals = np.array([plot_df["Participants_Ratio"].min() * 0.9, plot_df["Participants_Ratio"].max() * 1.05])
     
     for mouse_id, group_data in plot_df.groupby("mouse_id"):
         if mouse_id in mdf.random_effects:
-            # 获取这只老鼠的随机截距 (Random effect)
+            # 鑾峰彇杩欏彧鑰侀紶鐨勯殢鏈烘埅璺?(Random effect)
             rand_int = mdf.random_effects[mouse_id].iloc[0] 
             intercept = global_intercept + rand_int
             y_vals = intercept + coef * x_vals
-            # 画出属于这只老鼠自己的平行回归线
+            # 鐢诲嚭灞炰簬杩欏彧鑰侀紶鑷繁鐨勫钩琛屽洖褰掔嚎
             ax.plot(x_vals, y_vals, color="#A0A0A0", alpha=0.35, linewidth=1.2, zorder=1)
 
     # ==========================================
-    # 3. 绘制总体固定效应线 (Fixed Effect)
+    # 3. 缁樺埗鎬讳綋鍥哄畾鏁堝簲绾?(Fixed Effect)
     # ==========================================
     global_y_vals = global_intercept + coef * x_vals
     ax.plot(x_vals, global_y_vals, color="#202020", linewidth=3, linestyle="--", zorder=2, label="Fixed effect (LMM)")
 
     # ==========================================
-    # 4. 绘制原始散点 (区分条件)
+    # 4. 缁樺埗鍘熷鏁ｇ偣 (鍖哄垎鏉′欢)
     # ==========================================
     sns.scatterplot(
         data=plot_df, x="Participants_Ratio", y="Mean_RSM_Sim",
@@ -1122,7 +1732,7 @@ def plot_lmm_state_binding(df):
         edgecolor="white", linewidth=1, ax=ax, zorder=3
     )
 
-    # 添加 LMM 统计结果文本框
+    # 娣诲姞 LMM 缁熻缁撴灉鏂囨湰妗?
     stat_text = (f"Linear Mixed-Effects Model (LMM)\n"
                  f"RSM $\\sim$ PR + $(1 | Mouse)$\n\n"
                  f"Fixed Effect $\\beta$ = {coef:.4f}\n"
@@ -1130,15 +1740,15 @@ def plot_lmm_state_binding(df):
     ax.text(0.05, 0.95, stat_text, transform=ax.transAxes, fontsize=11,
             verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.9, edgecolor='#CCCCCC'))
 
-    # 美化坐标轴
+    # 缇庡寲鍧愭爣杞?
     ax.set_xlabel("Response Concentration (Participants Ratio)")
     ax.set_ylabel("Trial-to-Trial Population Stability (Mean RSM)")
     ax.set_title("Within-Animal State-Space Binding", pad=15)
     style_axis(ax)
     
-    # 清理图例，去除重复项
+    # 娓呯悊鍥句緥锛屽幓闄ら噸澶嶉」
     handles, labels = ax.get_legend_handles_labels()
-    # 保留 Fixed effect 和 三个条件
+    # 淇濈暀 Fixed effect 鍜?涓変釜鏉′欢
     keep_indices = [labels.index("Fixed effect (LMM)")] + [labels.index(c) for c in CONDITIONS if c in labels]
     ax.legend([handles[i] for i in keep_indices], [labels[i] for i in keep_indices], 
               title="", frameon=False, loc="lower right")
@@ -1147,546 +1757,201 @@ def plot_lmm_state_binding(df):
     save_figure_variants(fig, out)
     plt.close(fig)
     return out
-
-def _mean_sem(values):
-    vals = pd.to_numeric(pd.Series(values), errors="coerce").dropna()
-    if vals.empty:
-        return np.nan, np.nan
-    m = float(vals.mean())
-    sem = float(vals.sem()) if len(vals) > 1 else np.nan
-    return m, sem
-
-def _plot_paired_metric(ax, df, left_col, right_col, left_label, right_label, colors, ylabel, title):
-    if df is None or df.empty or left_col not in df.columns or right_col not in df.columns:
-        return False
-    sub = df[["mouse_id", left_col, right_col]].dropna()
-    if sub.empty:
-        return False
-
-    x = np.array([0, 1], dtype=float)
-    for _, row in sub.iterrows():
-        y = [float(row[left_col]), float(row[right_col])]
-        ax.plot(x, y, color="#999999", alpha=0.45, linewidth=1.0, zorder=1)
-        ax.scatter(x, y, color=[colors[0], colors[1]], s=26, zorder=2)
-
-    mean_left, sem_left = _mean_sem(sub[left_col])
-    mean_right, sem_right = _mean_sem(sub[right_col])
-    ax.errorbar(
-        x,
-        [mean_left, mean_right],
-        yerr=[sem_left, sem_right],
-        fmt="o-",
-        color="#222222",
-        linewidth=2.0,
-        capsize=4,
-        zorder=3,
-    )
-    ax.set_xticks(x)
-    ax.set_xticklabels([left_label, right_label], rotation=18)
-    ax.set_ylabel(ylabel)
-    ax.set_title(f"{title}\nN={sub['mouse_id'].nunique()} mice")
-    ax.grid(axis="y", linestyle="--", alpha=0.25)
-    style_axis(ax)
-    return True
-
-def plot_decoder_chain_accuracy(task1_df, task3_df):
-    has_task1 = task1_df is not None and not task1_df.empty
-    has_task3 = task3_df is not None and not task3_df.empty
-    if not has_task1 and not has_task3:
-        return None
-
-    fig, axes = plt.subplots(1, 2, figsize=(11.0, 4.6), dpi=180)
-    used_left = _plot_paired_metric(
-        axes[0],
-        task1_df,
-        "shuffle_accuracy_mean",
-        "accuracy_mean",
-        "Shuffle",
-        "Activity",
-        colors=["#B9CFE7", "#4C78A8"],
-        ylabel="Accuracy",
-        title="Task1 Decoder",
-    ) if has_task1 else False
-    if not used_left:
-        axes[0].axis("off")
-        axes[0].set_title("Task1 Decoder (not available)")
-
-    used_right = _plot_paired_metric(
-        axes[1],
-        task3_df,
-        "shuffle_accuracy_mean",
-        "accuracy_mean",
-        "Shuffle",
-        "FC",
-        colors=["#C7D5B8", "#54A24B"],
-        ylabel="Accuracy",
-        title="Task3 FC Decoder",
-    ) if has_task3 else False
-    if not used_right:
-        axes[1].axis("off")
-        axes[1].set_title("Task3 FC Decoder (not available)")
-
-    fig.tight_layout()
-    out = os.path.join(GROUP_OUT_DIR, "group_decoder_chain_accuracy.png")
-    save_figure_variants(fig, out)
-    plt.close(fig)
-    return out
-
-def plot_task2_ablation_summary(task2_df):
-    required = {"full_accuracy_mean", "top10_ablation_accuracy_mean", "random_drop_mean_accuracy"}
-    if task2_df is None or task2_df.empty or not required.issubset(task2_df.columns):
-        return None
-    sub = task2_df[["mouse_id", "full_accuracy_mean", "top10_ablation_accuracy_mean", "random_drop_mean_accuracy"]].dropna()
-    if sub.empty:
-        return None
-
-    labels = ["Full", "Top10 ablation", "Random drop"]
-    cols = ["full_accuracy_mean", "top10_ablation_accuracy_mean", "random_drop_mean_accuracy"]
-    x = np.arange(3)
-    colors = ["#4C78A8", "#E45756", "#72B7B2"]
-
-    fig, ax = plt.subplots(figsize=(6.6, 4.8), dpi=180)
-    for _, row in sub.iterrows():
-        y = [float(row[c]) for c in cols]
-        ax.plot(x, y, color="#999999", alpha=0.45, linewidth=1.0, zorder=1)
-        ax.scatter(x, y, color=colors, s=28, zorder=2)
-
-    means = [sub[c].mean() for c in cols]
-    sems = [sub[c].sem() if len(sub) > 1 else np.nan for c in cols]
-    ax.errorbar(x, means, yerr=sems, fmt="o-", color="#222222", linewidth=2.0, capsize=4, zorder=3)
-
-    ax.set_xticks(x)
-    ax.set_xticklabels(labels, rotation=15)
-    ax.set_ylabel("Accuracy")
-    ax.set_title(f"Task2 Top10% Neuron Ablation Across Mice\nN={sub['mouse_id'].nunique()} mice")
-    ax.grid(axis="y", linestyle="--", alpha=0.25)
-    style_axis(ax)
-
-    out = os.path.join(GROUP_OUT_DIR, "group_decoder_ablation_task2.png")
-    save_figure_variants(fig, out)
-    plt.close(fig)
-    return out
-
-def plot_task4_edge_ablation(task4_edge_ablation_long_df):
-    required = {"mouse_id", "ablation_type", "drop_fraction", "delta_vs_base"}
-    if task4_edge_ablation_long_df is None or task4_edge_ablation_long_df.empty or not required.issubset(task4_edge_ablation_long_df.columns):
-        return None
-
-    sub = task4_edge_ablation_long_df.copy()
-    top_df = sub[sub["ablation_type"] == "top"][["mouse_id", "drop_fraction", "delta_vs_base"]].rename(
-        columns={"delta_vs_base": "top_delta"}
-    )
-    rand_df = (
-        sub[sub["ablation_type"] == "random"]
-        .groupby(["mouse_id", "drop_fraction"], as_index=False)["delta_vs_base"]
-        .mean()
-        .rename(columns={"delta_vs_base": "random_delta"})
-    )
-    merged = pd.merge(top_df, rand_df, on=["mouse_id", "drop_fraction"], how="outer")
-    if merged.empty:
-        return None
-
-    plot_rows = []
-    for frac, g in merged.groupby("drop_fraction"):
-        mt, st = _mean_sem(g["top_delta"])
-        mr, sr = _mean_sem(g["random_delta"])
-        plot_rows.append(
-            {
-                "drop_fraction": float(frac),
-                "top_mean": mt, "top_sem": st,
-                "random_mean": mr, "random_sem": sr,
-                "n_mice": int(g["mouse_id"].nunique()),
-            }
-        )
-    plot_df = pd.DataFrame(plot_rows).sort_values("drop_fraction")
-    if plot_df.empty:
-        return None
-
-    x = np.arange(len(plot_df))
-    fig, ax = plt.subplots(figsize=(7.0, 4.8), dpi=180)
-    ax.errorbar(x, plot_df["top_mean"], yerr=plot_df["top_sem"], fmt="o-", color="#E45756", capsize=4, label="Top-edge drop")
-    ax.errorbar(x, plot_df["random_mean"], yerr=plot_df["random_sem"], fmt="s--", color="#54A24B", capsize=4, label="Random-edge drop")
-    ax.axhline(0.0, color="#666666", linewidth=1.0)
-    ax.set_xticks(x)
-    ax.set_xticklabels([f"{int(round(v * 100))}%" for v in plot_df["drop_fraction"]])
-    ax.set_xlabel("Dropped edge fraction")
-    ax.set_ylabel("Accuracy drop vs baseline")
-    ax.set_title("Task4 Edge Ablation Robustness Across Mice")
-    ax.legend(frameon=False)
-    ax.grid(axis="y", linestyle="--", alpha=0.25)
-    style_axis(ax)
-
-    out = os.path.join(GROUP_OUT_DIR, "group_fc_edge_ablation_task4.png")
-    save_figure_variants(fig, out)
-    plt.close(fig)
-    return out
-
-def plot_task5_decile_enrichment(task5_enrichment_long_df):
-    required = {"mouse_id", "level_type", "level", "log2_enrichment"}
-    if task5_enrichment_long_df is None or task5_enrichment_long_df.empty or not required.issubset(task5_enrichment_long_df.columns):
-        return None
-
-    dec = task5_enrichment_long_df[task5_enrichment_long_df["level_type"] == "decile"].copy()
-    if dec.empty:
-        return None
-    dec["decile_idx"] = dec["level"].astype(str).str.replace("D", "", regex=False)
-    dec["decile_idx"] = pd.to_numeric(dec["decile_idx"], errors="coerce")
-    dec = dec.dropna(subset=["decile_idx"])
-    if dec.empty:
-        return None
-
-    dec_stat = dec.groupby("decile_idx", as_index=False)["log2_enrichment"].agg(
-        log2_mean="mean",
-        log2_sem="sem",
-    )
-
-    regime = task5_enrichment_long_df[
-        (task5_enrichment_long_df["level_type"] == "regime")
-        & (task5_enrichment_long_df["level"].isin(["WeakTail_D1D2", "StrongTail_D9D10"]))
-    ].copy()
-    regime_stat = (
-        regime.groupby("level", as_index=False)["log2_enrichment"].agg(
-            log2_mean="mean",
-            log2_sem="sem",
-        )
-        if not regime.empty
-        else pd.DataFrame()
-    )
-
-    fig, axes = plt.subplots(1, 2, figsize=(12.0, 4.8), dpi=180)
-
-    x = dec_stat["decile_idx"].to_numpy(dtype=int)
-    axes[0].errorbar(x, dec_stat["log2_mean"], yerr=dec_stat["log2_sem"], fmt="o-", color="#4C78A8", capsize=4)
-    axes[0].axhline(0.0, color="#666666", linewidth=1.0)
-    axes[0].set_xticks(np.arange(1, 11, 1))
-    axes[0].set_xlabel("Decile (1=weak, 10=strong)")
-    axes[0].set_ylabel("Mean log2 enrichment")
-    axes[0].set_title("Task5 Decile Enrichment")
-    axes[0].grid(axis="y", linestyle="--", alpha=0.25)
-    style_axis(axes[0])
-
-    if regime_stat.empty:
-        axes[1].axis("off")
-        axes[1].set_title("Task5 Regime Enrichment (not available)")
-    else:
-        regime_stat["level"] = pd.Categorical(
-            regime_stat["level"],
-            categories=["WeakTail_D1D2", "StrongTail_D9D10"],
-            ordered=True,
-        )
-        regime_stat = regime_stat.sort_values("level")
-        x2 = np.arange(len(regime_stat))
-        axes[1].bar(x2, regime_stat["log2_mean"], yerr=regime_stat["log2_sem"], color=["#72B7B2", "#F58518"], alpha=0.9, capsize=4)
-        axes[1].axhline(0.0, color="#666666", linewidth=1.0)
-        axes[1].set_xticks(x2)
-        axes[1].set_xticklabels(regime_stat["level"].astype(str), rotation=15)
-        axes[1].set_ylabel("Mean log2 enrichment")
-        axes[1].set_title("Task5 Regime Enrichment")
-        axes[1].grid(axis="y", linestyle="--", alpha=0.25)
-        style_axis(axes[1])
-
-    fig.tight_layout()
-    out = os.path.join(GROUP_OUT_DIR, "group_fc_edge_decile_enrichment_task5.png")
-    save_figure_variants(fig, out)
-    plt.close(fig)
-    return out
-
-def plot_task6_linking(task6_overlap_enrichment_long_df, task6_selectivity_long_df):
-    has_overlap = (
-        task6_overlap_enrichment_long_df is not None
-        and not task6_overlap_enrichment_long_df.empty
-        and {"overlap_category", "log2_enrichment"}.issubset(task6_overlap_enrichment_long_df.columns)
-    )
-    has_selectivity = (
-        task6_selectivity_long_df is not None
-        and not task6_selectivity_long_df.empty
-        and {"level_type", "overlap_category", "mean_selectivity_index"}.issubset(task6_selectivity_long_df.columns)
-    )
-    if not has_overlap and not has_selectivity:
-        return None
-
-    fig, axes = plt.subplots(1, 2, figsize=(12.0, 4.8), dpi=180)
-
-    if has_overlap:
-        enr = task6_overlap_enrichment_long_df.groupby("overlap_category", as_index=False)["log2_enrichment"].agg(
-            log2_mean="mean",
-            log2_sem="sem",
-        )
-        x = np.arange(len(enr))
-        axes[0].bar(x, enr["log2_mean"], yerr=enr["log2_sem"], color="#4C78A8", alpha=0.9, capsize=4)
-        axes[0].axhline(0.0, color="#666666", linewidth=1.0)
-        axes[0].set_xticks(x)
-        axes[0].set_xticklabels(enr["overlap_category"].astype(str), rotation=18)
-        axes[0].set_ylabel("Mean log2 enrichment")
-        axes[0].set_title("Task6 Overlap Enrichment")
-        axes[0].grid(axis="y", linestyle="--", alpha=0.25)
-        style_axis(axes[0])
-    else:
-        axes[0].axis("off")
-        axes[0].set_title("Task6 Overlap Enrichment (not available)")
-
-    if has_selectivity:
-        sel = task6_selectivity_long_df[task6_selectivity_long_df["level_type"] == "coarse"].copy()
-        if sel.empty:
-            axes[1].axis("off")
-            axes[1].set_title("Task6 Selectivity by Overlap (not available)")
-        else:
-            sel_stat = sel.groupby("overlap_category", as_index=False)["mean_selectivity_index"].agg(
-                si_mean="mean",
-                si_sem="sem",
-            )
-            x2 = np.arange(len(sel_stat))
-            axes[1].bar(x2, sel_stat["si_mean"], yerr=sel_stat["si_sem"], color="#72B7B2", alpha=0.9, capsize=4)
-            axes[1].set_xticks(x2)
-            axes[1].set_xticklabels(sel_stat["overlap_category"].astype(str), rotation=18)
-            axes[1].set_ylabel("Mean selectivity index")
-            axes[1].set_title("Task6 Selectivity by Overlap")
-            axes[1].grid(axis="y", linestyle="--", alpha=0.25)
-            style_axis(axes[1])
-    else:
-        axes[1].axis("off")
-        axes[1].set_title("Task6 Selectivity by Overlap (not available)")
-
-    fig.tight_layout()
-    out = os.path.join(GROUP_OUT_DIR, "group_neuron_linking_task6.png")
-    save_figure_variants(fig, out)
-    plt.close(fig)
-    return out
-
-def build_decoder_chain_summary_table(
-    task1_df,
-    task2_df,
-    task3_df,
-    task4_edge_ablation_long_df,
-    task5_enrichment_long_df,
-    task6_overlap_enrichment_long_df,
-):
-    rows = []
-
-    def _append_metric(df, col, label):
-        if df is None or df.empty or col not in df.columns:
-            return
-        vals = pd.to_numeric(df[col], errors="coerce").dropna()
-        if vals.empty:
-            return
-        rows.append(
-            {
-                "Metric": label,
-                "N_mice": int(vals.size),
-                "Mean": float(vals.mean()),
-                "SEM": float(vals.sem()) if vals.size > 1 else np.nan,
-            }
-        )
-
-    _append_metric(task1_df, "accuracy_mean", "Task1 activity decoder accuracy")
-    _append_metric(task1_df, "accuracy_minus_shuffle", "Task1 activity decoder minus shuffle")
-    _append_metric(task2_df, "delta_full_minus_top10", "Task2 full minus top10 ablation")
-    _append_metric(task3_df, "accuracy_mean", "Task3 FC decoder accuracy")
-    _append_metric(task3_df, "accuracy_minus_shuffle", "Task3 FC decoder minus shuffle")
-
-    if task4_edge_ablation_long_df is not None and not task4_edge_ablation_long_df.empty:
-        top = task4_edge_ablation_long_df[task4_edge_ablation_long_df["ablation_type"] == "top"].copy()
-        for frac in sorted(top["drop_fraction"].dropna().unique().tolist()):
-            vals = pd.to_numeric(top.loc[top["drop_fraction"] == frac, "delta_vs_base"], errors="coerce").dropna()
-            if vals.empty:
-                continue
-            rows.append(
-                {
-                    "Metric": f"Task4 top-edge ablation delta (drop={int(round(frac * 100))}%)",
-                    "N_mice": int(vals.size),
-                    "Mean": float(vals.mean()),
-                    "SEM": float(vals.sem()) if vals.size > 1 else np.nan,
-                }
-            )
-
-    if task5_enrichment_long_df is not None and not task5_enrichment_long_df.empty:
-        weak = task5_enrichment_long_df[
-            (task5_enrichment_long_df["level_type"] == "regime")
-            & (task5_enrichment_long_df["level"] == "WeakTail_D1D2")
-        ]
-        _append_metric(weak, "log2_enrichment", "Task5 weak-tail log2 enrichment")
-
-    if task6_overlap_enrichment_long_df is not None and not task6_overlap_enrichment_long_df.empty:
-        shared = task6_overlap_enrichment_long_df[task6_overlap_enrichment_long_df["overlap_category"] == "Shared_Core"]
-        _append_metric(shared, "log2_enrichment", "Task6 Shared_Core log2 enrichment")
-
-    return pd.DataFrame(rows)
-
-def run_group_integration():
+# ==========================================
+# 6. Main Execution
+# ==========================================
+if __name__ == "__main__":
     bundles = load_all_mice_bundles(RESULTS_BASE_DIR)
     if not bundles:
-        print("[!] No mice loaded. Please check the results directory structure.")
-        return
+        print("[!] No mouse bundles found. Stop.")
+        raise SystemExit(0)
 
-    table_paths = {}
-
-    # ===== Original multi-mouse integration outputs =====
+    # ---------------- Core tables ----------------
     master_df = build_master_dataframe(bundles)
-    master_path = os.path.join(GROUP_OUT_DIR, "group_master_metrics.csv")
-    master_df.to_csv(master_path, index=False)
-    table_paths["Master metrics"] = master_path
-
+    dup_mc = int(master_df.duplicated(["mouse_id", "Condition"]).sum())
+    if dup_mc > 0:
+        print(f"[!] Found duplicated mouse_id+Condition rows in master_df: {dup_mc}. Collapse by mean.")
+        num_cols = [c for c in master_df.columns if c not in ["mouse_id", "Condition"]]
+        master_df = (
+            master_df.groupby(["mouse_id", "Condition"], as_index=False)[num_cols]
+            .mean(numeric_only=True)
+        )
     decile_df = build_decile_dataframe(bundles)
-    decile_path = os.path.join(GROUP_OUT_DIR, "group_corr_deciles_long.csv")
-    decile_df.to_csv(decile_path, index=False)
-    table_paths["Correlation deciles long"] = decile_path
-
     noise_decile_long_df = build_noise_decile_coupling_long_dataframe(bundles)
-    noise_decile_path = os.path.join(GROUP_OUT_DIR, "group_noise_corr_decile_coupling_long.csv")
-    noise_decile_long_df.to_csv(noise_decile_path, index=False)
-    table_paths["Noise decile coupling long"] = noise_decile_path
-
     rr_overlap_df = build_rr_overlap_dataframe(bundles)
-    rr_overlap_path = os.path.join(GROUP_OUT_DIR, "group_rr_overlap_long.csv")
-    rr_overlap_df.to_csv(rr_overlap_path, index=False)
-    table_paths["RR overlap long"] = rr_overlap_path
+    geometry_long_df = build_geometry_condition_long_dataframe(bundles)
+    geometry_pairwise_long_df = build_geometry_pairwise_long_dataframe(bundles)
+    geometry_model_compare_long_df = build_geometry_model_compare_long_dataframe(bundles)
 
-    # ===== New Task1-6 multi-mouse integration =====
-    task1_df = build_decoder_summary_dataframe(bundles)
-    task1_path = os.path.join(GROUP_OUT_DIR, "group_decoder_summary_long.csv")
-    task1_df.to_csv(task1_path, index=False)
-    table_paths["Task1 decoder summary long"] = task1_path
+    # ---------------- Shuffle tables ----------------
+    shuffle_manifest_df = build_shuffle_manifest_dataframe(bundles)
+    shuffle_corr_long_df = build_shuffle_corr_long_dataframe(bundles)
+    shuffle_corr_decile_long_df = build_shuffle_corr_decile_long_dataframe(bundles)
+    shuffle_rsm_long_df = build_shuffle_rsm_long_dataframe(bundles)
+    shuffle_delta_long_df = build_shuffle_delta_long_dataframe(bundles)
+    shuffle_dose_long_df = build_shuffle_dose_long_dataframe(bundles)
+    shuffle_alloc_long_df = build_shuffle_alloc_long_dataframe(bundles)
+    shuffle_effect_stats_df = build_shuffle_effect_stats_dataframe(bundles)
+    shuffle_cond_summary_df = build_shuffle_condition_summary_dataframe(bundles)
+    shuffle_cond_stats_df = build_shuffle_condition_stats_dataframe(bundles)
+    shuffle_sync_contrib_df = build_shuffle_sync_contribution_dataframe(bundles)
+    shuffle_sync_contrib_repeats_df = build_shuffle_sync_contribution_repeats_dataframe(bundles)
+    shuffle_core_long_df = build_shuffle_core_long_dataframe(
+        shuffle_corr_long_df, shuffle_rsm_long_df, shuffle_alloc_long_df
+    )
 
-    task2_df = build_decoder_ablation_summary_dataframe(bundles)
-    task2_path = os.path.join(GROUP_OUT_DIR, "group_decoder_ablation_summary_long.csv")
-    task2_df.to_csv(task2_path, index=False)
-    table_paths["Task2 ablation summary long"] = task2_path
+    # ---------------- Save core tables ----------------
+    save_paths = {}
+    save_paths["group_master_metrics"] = os.path.join(GROUP_OUT_DIR, "group_master_metrics.csv")
+    master_df.to_csv(save_paths["group_master_metrics"], index=False)
 
-    task3_df = build_fc_decoder_summary_dataframe(bundles)
-    task3_path = os.path.join(GROUP_OUT_DIR, "group_fc_decoder_summary_long.csv")
-    task3_df.to_csv(task3_path, index=False)
-    table_paths["Task3 FC decoder summary long"] = task3_path
+    save_paths["group_corr_deciles_long"] = os.path.join(GROUP_OUT_DIR, "group_corr_deciles_long.csv")
+    if not decile_df.empty:
+        decile_df.to_csv(save_paths["group_corr_deciles_long"], index=False)
 
-    task4_stability_long_df = build_fc_edge_stability_long_dataframe(bundles)
-    task4_stability_path = os.path.join(GROUP_OUT_DIR, "group_fc_edge_importance_stability_long.csv")
-    task4_stability_long_df.to_csv(task4_stability_path, index=False)
-    table_paths["Task4 edge stability long"] = task4_stability_path
+    save_paths["group_noise_corr_decile_coupling_long"] = os.path.join(
+        GROUP_OUT_DIR, "group_noise_corr_decile_coupling_long.csv"
+    )
+    if not noise_decile_long_df.empty:
+        noise_decile_long_df.to_csv(save_paths["group_noise_corr_decile_coupling_long"], index=False)
 
-    task4_stability_summary_df = build_fc_edge_stability_mouse_summary(task4_stability_long_df)
-    task4_stability_summary_path = os.path.join(GROUP_OUT_DIR, "group_fc_edge_importance_mouse_summary.csv")
-    task4_stability_summary_df.to_csv(task4_stability_summary_path, index=False)
-    table_paths["Task4 edge stability mouse summary"] = task4_stability_summary_path
+    save_paths["group_rr_overlap_long"] = os.path.join(GROUP_OUT_DIR, "group_rr_overlap_long.csv")
+    if not rr_overlap_df.empty:
+        rr_overlap_df.to_csv(save_paths["group_rr_overlap_long"], index=False)
 
-    task4_ablation_long_df = build_fc_edge_ablation_long_dataframe(bundles)
-    task4_ablation_path = os.path.join(GROUP_OUT_DIR, "group_fc_edge_ablation_long.csv")
-    task4_ablation_long_df.to_csv(task4_ablation_path, index=False)
-    table_paths["Task4 edge ablation long"] = task4_ablation_path
+    save_paths["group_geometry_condition_level_long"] = os.path.join(
+        GROUP_OUT_DIR, "group_geometry_condition_level_long.csv"
+    )
+    if not geometry_long_df.empty:
+        geometry_long_df.to_csv(save_paths["group_geometry_condition_level_long"], index=False)
 
-    task4_proj_decile_long_df = build_fc_projection_decile_long_dataframe(bundles)
-    task4_proj_decile_path = os.path.join(GROUP_OUT_DIR, "group_fc_projection_by_strength_decile_long.csv")
-    task4_proj_decile_long_df.to_csv(task4_proj_decile_path, index=False)
-    table_paths["Task4 projection decile long"] = task4_proj_decile_path
+    save_paths["group_geometry_condition_pairwise_long"] = os.path.join(
+        GROUP_OUT_DIR, "group_geometry_condition_pairwise_long.csv"
+    )
+    if not geometry_pairwise_long_df.empty:
+        geometry_pairwise_long_df.to_csv(save_paths["group_geometry_condition_pairwise_long"], index=False)
 
-    task4_proj_layer_long_df = build_fc_projection_layer_pair_long_dataframe(bundles)
-    task4_proj_layer_path = os.path.join(GROUP_OUT_DIR, "group_fc_projection_by_layer_pair_long.csv")
-    task4_proj_layer_long_df.to_csv(task4_proj_layer_path, index=False)
-    table_paths["Task4 projection layer pair long"] = task4_proj_layer_path
+    save_paths["group_geometry_model_compare_long"] = os.path.join(
+        GROUP_OUT_DIR, "group_geometry_model_compare_long.csv"
+    )
+    if not geometry_model_compare_long_df.empty:
+        geometry_model_compare_long_df.to_csv(save_paths["group_geometry_model_compare_long"], index=False)
 
-    task4_proj_sw_long_df = build_fc_projection_strong_weak_long_dataframe(bundles)
-    task4_proj_sw_path = os.path.join(GROUP_OUT_DIR, "group_fc_projection_strong_weak_match_long.csv")
-    task4_proj_sw_long_df.to_csv(task4_proj_sw_path, index=False)
-    table_paths["Task4 projection strong-weak match long"] = task4_proj_sw_path
+    # ---------------- Save shuffle tables ----------------
+    shuffle_save_paths = {}
+    shuffle_table_map = {
+        "group_shuffle_manifest": (shuffle_manifest_df, "group_shuffle_manifest.csv"),
+        "group_shuffle_corr_long": (shuffle_corr_long_df, "group_shuffle_corr_long.csv"),
+        "group_shuffle_corr_decile_long": (shuffle_corr_decile_long_df, "group_shuffle_corr_decile_long.csv"),
+        "group_shuffle_rsm_long": (shuffle_rsm_long_df, "group_shuffle_rsm_long.csv"),
+        "group_shuffle_delta_long": (shuffle_delta_long_df, "group_shuffle_delta_long.csv"),
+        "group_shuffle_dose_long": (shuffle_dose_long_df, "group_shuffle_dose_long.csv"),
+        "group_shuffle_alloc_long": (shuffle_alloc_long_df, "group_shuffle_alloc_long.csv"),
+        "group_shuffle_effect_stats_raw": (shuffle_effect_stats_df, "group_shuffle_effect_stats_raw.csv"),
+        "group_shuffle_condition_summary_raw": (shuffle_cond_summary_df, "group_shuffle_condition_summary_raw.csv"),
+        "group_shuffle_condition_stats_raw": (shuffle_cond_stats_df, "group_shuffle_condition_stats_raw.csv"),
+        "group_shuffle_sync_contribution_raw": (shuffle_sync_contrib_df, "group_shuffle_sync_contribution_raw.csv"),
+        "group_shuffle_sync_contribution_repeats_raw": (shuffle_sync_contrib_repeats_df, "group_shuffle_sync_contribution_repeats_raw.csv"),
+        "group_shuffle_core_long": (shuffle_core_long_df, "group_shuffle_core_long.csv"),
+    }
+    for key, (df, fn) in shuffle_table_map.items():
+        p = os.path.join(GROUP_OUT_DIR, fn)
+        if df is not None and not df.empty:
+            df.to_csv(p, index=False)
+            shuffle_save_paths[key] = p
 
-    task5_enrichment_long_df = build_fc_edge_decile_enrichment_long_dataframe(bundles)
-    task5_path = os.path.join(GROUP_OUT_DIR, "group_fc_edge_decile_enrichment_long.csv")
-    task5_enrichment_long_df.to_csv(task5_path, index=False)
-    table_paths["Task5 edge decile enrichment long"] = task5_path
+    # ---------------- 娴嬭瘯鎸囨爣閫夋嫨 ----------------
+    metrics_to_test = [m for m in [
+        "Entropy", "Mean_RSM_Sim", "Mean_Correlation", "Strong_Correlation", "Weak_Correlation",
+        "Strong_Weak_Gap", "Participants_Ratio", "Gini_Mean", "PR_Mean", "Effective_Dim_PR",
+        "Sig_Mean_Corr", "Noise_Mean_Corr",
+        "Geom_AngleDeg", "Geom_OrthParallelRatio", "Geom_VarParallel", "Geom_VarOrthogonal", "Geom_Anisotropy"
+    ] if m in master_df.columns and not master_df[m].isna().all()]
 
-    task6_overlap_long_df = build_neuron_overlap_enrichment_long_dataframe(bundles)
-    task6_overlap_path = os.path.join(GROUP_OUT_DIR, "group_neuron_overlap_enrichment_long.csv")
-    task6_overlap_long_df.to_csv(task6_overlap_path, index=False)
-    table_paths["Task6 neuron overlap enrichment long"] = task6_overlap_path
-
-    task6_selectivity_long_df = build_neuron_selectivity_overlap_long_dataframe(bundles)
-    task6_selectivity_path = os.path.join(GROUP_OUT_DIR, "group_neuron_selectivity_by_overlap_long.csv")
-    task6_selectivity_long_df.to_csv(task6_selectivity_path, index=False)
-    table_paths["Task6 neuron selectivity by overlap long"] = task6_selectivity_path
-
-    coverage_frames = [
-        ("Task1 decoder summary", task1_df),
-        ("Task2 ablation summary", task2_df),
-        ("Task3 FC decoder summary", task3_df),
-        ("Task4 edge stability", task4_stability_long_df),
-        ("Task4 edge ablation", task4_ablation_long_df),
-        ("Task5 edge decile enrichment", task5_enrichment_long_df),
-        ("Task6 overlap enrichment", task6_overlap_long_df),
-        ("Task6 selectivity by overlap", task6_selectivity_long_df),
-    ]
-    for name, df_now in coverage_frames:
-        n_rows = 0 if df_now is None else len(df_now)
-        if df_now is None or df_now.empty or "mouse_id" not in df_now.columns:
-            n_mice = 0
-        else:
-            n_mice = int(df_now["mouse_id"].nunique())
-        print(f"[*] Coverage - {name}: {n_mice} mice, {n_rows} rows")
-
-    # ===== Condition-level statistical tests =====
-    metrics_to_test = [
-        m
-        for m in [
-            "Entropy",
-            "Mean_RSM_Sim",
-            "Mean_Correlation",
-            "Strong_Correlation",
-            "Weak_Correlation",
-            "Strong_Weak_Gap",
-            "Participants_Ratio",
-            "Gini_Mean",
-            "PR_Mean",
-            "Effective_Dim_PR",
-            "Sig_Mean_Corr",
-            "Noise_Mean_Corr",
-        ]
-        if m in master_df.columns and not master_df[m].isna().all()
-    ]
     stat_results = {m: perform_statistical_tests(master_df, m) for m in metrics_to_test}
 
+    # Save core stat summary table
     stat_rows = []
     for metric, res in stat_results.items():
         ph = res.get("post_hoc", {})
-        stat_rows.append(
-            {
-                "Metric": metric,
-                "Main_Effect": res.get("main_effect", "N/A"),
-                "p_main": res.get("p_main", np.nan),
-                "Div_vs_Con": ph.get("Divergent vs Convergent", np.nan),
-                "Div_vs_Rand": ph.get("Divergent vs Random", np.nan),
-                "Con_vs_Rand": ph.get("Convergent vs Random", np.nan),
-            }
+        stat_rows.append({
+            "metric": metric,
+            "main_effect": res.get("main_effect", "N/A"),
+            "p_main": res.get("p_main", np.nan),
+            "Divergent_vs_Convergent": ph.get("Divergent vs Convergent", np.nan),
+            "Divergent_vs_Random": ph.get("Divergent vs Random", np.nan),
+            "Convergent_vs_Random": ph.get("Convergent vs Random", np.nan),
+        })
+    stat_summary_df = pd.DataFrame(stat_rows)
+    save_paths["group_statistical_tests_summary"] = os.path.join(GROUP_OUT_DIR, "group_statistical_tests_summary.csv")
+    stat_summary_df.to_csv(save_paths["group_statistical_tests_summary"], index=False)
+
+    # ---------------- Geometry mixed-model summaries ----------------
+    geometry_lmm_df = run_geometry_lmm_models(master_df)
+    geometry_save_paths = {}
+    for k in [
+        "group_geometry_condition_level_long",
+        "group_geometry_condition_pairwise_long",
+        "group_geometry_model_compare_long",
+    ]:
+        p = save_paths.get(k, None)
+        if isinstance(p, str) and os.path.exists(p) and os.path.getsize(p) > 0:
+            geometry_save_paths[k] = p
+    if not geometry_lmm_df.empty:
+        geometry_save_paths["group_geometry_rsm_model_compare"] = os.path.join(
+            GROUP_OUT_DIR, "group_geometry_rsm_model_compare.csv"
         )
-    stat_df = pd.DataFrame(stat_rows)
-    stat_path = os.path.join(GROUP_OUT_DIR, "group_statistical_tests_summary.csv")
-    stat_df.to_csv(stat_path, index=False)
-    table_paths["Condition-level statistical tests"] = stat_path
+        geometry_lmm_df.to_csv(geometry_save_paths["group_geometry_rsm_model_compare"], index=False)
 
-    decoder_chain_summary_df = build_decoder_chain_summary_table(
-        task1_df,
-        task2_df,
-        task3_df,
-        task4_ablation_long_df,
-        task5_enrichment_long_df,
-        task6_overlap_long_df,
-    )
-    decoder_chain_summary_path = os.path.join(GROUP_OUT_DIR, "group_decoder_chain_summary.csv")
-    decoder_chain_summary_df.to_csv(decoder_chain_summary_path, index=False)
-    table_paths["Task1-6 decoder chain summary"] = decoder_chain_summary_path
+        rsm_df = geometry_lmm_df[geometry_lmm_df["model_name"].astype(str).str.startswith("M")].copy()
+        alloc_df = geometry_lmm_df[geometry_lmm_df["model_name"].astype(str).str.startswith("A")].copy()
+        vs_dim_df = geometry_lmm_df[
+            geometry_lmm_df["model_name"].astype(str).str.startswith(("M", "D"))
+        ].copy()
 
-    decoder_chain_stats_df = build_decoder_chain_stats_table(
-        task1_df,
-        task2_df,
-        task3_df,
-        task4_ablation_long_df,
-        task5_enrichment_long_df,
-        task6_overlap_long_df,
-    )
-    decoder_chain_stats_path = os.path.join(GROUP_OUT_DIR, "group_decoder_chain_stat_tests.csv")
-    decoder_chain_stats_df.to_csv(decoder_chain_stats_path, index=False)
-    table_paths["Task1-6 decoder chain statistical tests"] = decoder_chain_stats_path
+        geometry_save_paths["group_geometry_rsm_lmm_summary"] = os.path.join(
+            GROUP_OUT_DIR, "group_geometry_rsm_lmm_summary.md"
+        )
+        with open(geometry_save_paths["group_geometry_rsm_lmm_summary"], "w", encoding="utf-8") as f:
+            f.write("# Group Geometry vs Mean RSM (LMM)\n\n")
+            f.write(df_to_md(rsm_df) + "\n")
 
-    # ===== Figures =====
+        geometry_save_paths["group_geometry_allocation_lmm_summary"] = os.path.join(
+            GROUP_OUT_DIR, "group_geometry_allocation_lmm_summary.md"
+        )
+        with open(geometry_save_paths["group_geometry_allocation_lmm_summary"], "w", encoding="utf-8") as f:
+            f.write("# Group Geometry vs Participants Ratio (LMM)\n\n")
+            f.write(df_to_md(alloc_df) + "\n")
+
+        geometry_save_paths["group_geometry_vs_dimensionality_model_compare"] = os.path.join(
+            GROUP_OUT_DIR, "group_geometry_vs_dimensionality_model_compare.csv"
+        )
+        vs_dim_df.to_csv(geometry_save_paths["group_geometry_vs_dimensionality_model_compare"], index=False)
+
+    # ---------------- Shuffle stats across mice ----------------
+    shuffle_ov_stats_df = test_shuffle_original_vs_shuffled(shuffle_core_long_df)
+    shuffle_cond_group_stats_df = test_shuffle_condition_differences(shuffle_core_long_df, data_type="shuffled")
+    shuffle_sync_group_stats_df = test_shuffle_sync_contribution(shuffle_sync_contrib_df)
+    shuffle_orig_group_stats_path = os.path.join(GROUP_OUT_DIR, "group_shuffle_original_vs_shuffled_stats.csv")
+    shuffle_cond_group_stats_path = os.path.join(GROUP_OUT_DIR, "group_shuffle_condition_stats.csv")
+    shuffle_sync_group_stats_path = os.path.join(GROUP_OUT_DIR, "group_shuffle_sync_contribution_stats.csv")
+    if not shuffle_ov_stats_df.empty:
+        shuffle_ov_stats_df.to_csv(shuffle_orig_group_stats_path, index=False)
+        shuffle_save_paths["group_shuffle_original_vs_shuffled_stats"] = shuffle_orig_group_stats_path
+    if not shuffle_cond_group_stats_df.empty:
+        shuffle_cond_group_stats_df.to_csv(shuffle_cond_group_stats_path, index=False)
+        shuffle_save_paths["group_shuffle_condition_stats"] = shuffle_cond_group_stats_path
+    if not shuffle_sync_group_stats_df.empty:
+        shuffle_sync_group_stats_df.to_csv(shuffle_sync_group_stats_path, index=False)
+        shuffle_save_paths["group_shuffle_sync_contribution_stats"] = shuffle_sync_group_stats_path
+
+    # ---------------- 鍙鍖栫敓鎴?----------------
     image_paths = {}
+    
+    # 1. 寮哄急瀵规瘮鍙岄潰鏉跨鍨嬪浘 (Boxplot Dual-panel)
     image_paths["Combined Strong vs Weak"] = plot_combined_strong_weak(master_df)
 
+    # 2. 鏍稿績鎸囨爣鐨勬瀬绠€鏌辩姸鍥?
     core_metrics = [
         ("Mean_RSM_Sim", "Cosine similarity", "RSM Mean Similarity"),
         ("Strong_Correlation", "Correlation", "Strong Connections (Top 10%)"),
@@ -1696,40 +1961,70 @@ def run_group_integration():
         ("Gini_Mean", "Gini Coefficient", "Response Gini (Mean)"),
     ]
     for metric, ylabel, title in core_metrics:
-        image_paths[title] = plot_group_metric(
-            master_df,
-            metric,
-            ylabel,
-            title,
-            stat_res=stat_results.get(metric, {}),
-            save_name=f"group_{metric.lower()}.png",
-        )
+        image_paths[title] = plot_group_metric(master_df, metric, ylabel, title, stat_res=stat_results.get(metric, {}), save_name=f"group_{metric.lower()}.png")
 
+    # 3. 鍒嗗眰鏇茬嚎 (闃村奖璇樊甯?
     image_paths["Decile Correlation Curve"] = plot_decile_curve(decile_df)
     image_paths["Noise Decile Curve"] = plot_noise_decile_curve(noise_decile_long_df)
     image_paths["Cross-animal Binding"] = plot_cross_animal_binding(master_df)
     image_paths["Absolute State Binding"] = plot_absolute_state_binding(master_df)
     image_paths["LMM State Binding"] = plot_lmm_state_binding(master_df)
+    image_paths["Geometry Angle Condition"] = plot_geometry_condition_metric(
+        geometry_long_df, "angle_deg", "Angle between mean axis and PC1 (deg)", "group_geometry_angle_condition.png"
+    )
+    image_paths["Geometry Orth/Parallel Ratio Condition"] = plot_geometry_condition_metric(
+        geometry_long_df, "orth_parallel_ratio", "Orthogonal / Parallel variance ratio", "group_geometry_orth_parallel_condition.png"
+    )
+    image_paths["Geometry Angle vs Mean RSM"] = plot_geometry_vs_rsm(
+        master_df, "Geom_AngleDeg", "Geometry angle (deg)", "group_geometry_angle_vs_rsm.png"
+    )
+    image_paths["Geometry Ratio vs Mean RSM"] = plot_geometry_vs_rsm(
+        master_df, "Geom_OrthParallelRatio", "Orthogonal / Parallel variance ratio", "group_geometry_ratio_vs_rsm.png"
+    )
 
-    image_paths["Decoder Accuracy (Task1+Task3)"] = plot_decoder_chain_accuracy(task1_df, task3_df)
-    image_paths["Decoder Ablation (Task2)"] = plot_task2_ablation_summary(task2_df)
-    image_paths["Edge Ablation Robustness (Task4)"] = plot_task4_edge_ablation(task4_ablation_long_df)
-    image_paths["Edge Decile Enrichment (Task5)"] = plot_task5_decile_enrichment(task5_enrichment_long_df)
-    image_paths["Neuron Linking (Task6)"] = plot_task6_linking(task6_overlap_long_df, task6_selectivity_long_df)
-
+    # 4. Shuffle group-level figures
+    shuffle_metric_y = {
+        "weak_corr": "Weak correlation",
+        "strong_weak_gap": "Strong-Weak gap",
+        "mean_rsm": "Mean RSM",
+        "pr_mean": "Participation ratio (PR)",
+    }
+    for metric, ylabel in shuffle_metric_y.items():
+        if metric in set(shuffle_core_long_df.columns):
+            image_paths[f"Shuffle Orig-vs-Shuffled: {metric}"] = plot_shuffle_orig_vs_shuffled(
+                shuffle_core_long_df, metric, ylabel, stat_df=shuffle_ov_stats_df
+            )
+            image_paths[f"Shuffle Condition Difference: {metric}"] = plot_shuffle_condition_only(
+                shuffle_core_long_df, metric, ylabel, data_type="shuffled", stat_df=shuffle_cond_group_stats_df
+            )
+        if metric in set(shuffle_dose_long_df.columns):
+            image_paths[f"Shuffle Dose-response: {metric}"] = plot_shuffle_dose_response_group(
+                shuffle_dose_long_df, metric, ylabel
+            )
+    image_paths["Shuffle Delta by Condition"] = plot_shuffle_delta_group(shuffle_delta_long_df)
+    image_paths["Shuffle Synchrony Contribution"] = plot_shuffle_sync_contribution_group(
+        shuffle_sync_contrib_df, stat_df=shuffle_sync_group_stats_df
+    )
+    # 5. Generate markdown report (including shuffle outputs)
+    shuffle_payload = {
+        "orig_vs_shuffled_stats": shuffle_ov_stats_df,
+        "condition_stats": shuffle_cond_group_stats_df,
+        "sync_contribution_stats": shuffle_sync_group_stats_df,
+        "csv_paths": shuffle_save_paths,
+    }
+    geometry_payload = {
+        "condition_long": geometry_long_df,
+        "pairwise_long": geometry_pairwise_long_df,
+        "model_compare": geometry_lmm_df if 'geometry_lmm_df' in locals() else pd.DataFrame(),
+        "csv_paths": geometry_save_paths if 'geometry_save_paths' in locals() else {},
+    }
     generate_group_markdown(
         master_df,
         stat_results,
         image_paths,
         rr_overlap_df,
-        table_paths=table_paths,
-        decoder_chain_summary_df=decoder_chain_summary_df,
-        decoder_chain_stats_df=decoder_chain_stats_df,
+        shuffle_payload=shuffle_payload,
+        geometry_payload=geometry_payload,
     )
-    print("====== Group integration (tables, stats, figures, markdown) completed ======")
 
-# ==========================================
-# 6. Main Execution
-# ==========================================
-if __name__ == "__main__":
-    run_group_integration()
+    print("====== Group integration visualization & markdown completed ======")
