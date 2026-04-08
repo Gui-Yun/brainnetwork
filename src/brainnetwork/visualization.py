@@ -348,7 +348,7 @@ def plot_accuracy(
     fig.tight_layout()
     if save_path is not None:
         fig.savefig(save_path, dpi=300)
-    plt.show()
+    # plt.show()  # Removed to avoid warnings in notebooks
 def plot_fisher_information(
     time_points,
     fisher,

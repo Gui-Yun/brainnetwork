@@ -10,7 +10,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import RobustScaler
 from sklearn.svm import SVC
 
-matplotlib.use("Agg")
+
 import matplotlib.pyplot as plt
 
 

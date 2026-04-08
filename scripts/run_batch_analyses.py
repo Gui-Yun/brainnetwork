@@ -19,6 +19,12 @@
 # - [8. Class-RR vs Other-RR](#sec-8)
 # - [9. Strong vs Weak Connectivity](#sec-9)
 # - [10. Export and Report Generation](#sec-10)
+# - [11. Decoder Robustness (Task 1-2)](#sec-11)
+# - [12. FC Decoder Chain (Tasks 3-6)](#sec-12)
+# - [13. Population-Pattern Shuffle Dependence](#sec-13)
+# - [14. Shuffled Condition Differences](#sec-14)
+# - [15. Final Integrated Export](#sec-15)
+# 
 # 
 
 # %% [markdown]
@@ -58,16 +64,113 @@ plt.ion()  # 开启交互式绘图
 # %%
 base_dir = "/beegfs_hdd/data/nfs_share/users/guiyun/nishome/Micedata/"
 data_paths = ["M21_1107", "M71_1024", "M73_1128", "M77_1031", "M77_1107", "M78_1017", "M79_1128", "M91_1017"]
+
+# ==========================================================
+# Run control:
+# - default all analyses
+# - if selected analyses already have non-empty output files, skip that mouse
+# Options: "core", "decoder_task1_2", "fc_task3_6", "shuffle", "rsm_geometry", "all"
+# ==========================================================
+RUN_ANALYSES = ["all"]
+
+ANALYSIS_GROUPS = ("core", "decoder_task1_2", "fc_task3_6", "shuffle", "rsm_geometry")
+
+
+def _nonempty_file(path):
+    return os.path.isfile(path) and os.path.getsize(path) > 0
+
+
+def _resolve_selected_analyses(run_analyses):
+    vals = [str(x).strip().lower() for x in (run_analyses or ["all"]) if str(x).strip()]
+    if not vals or "all" in vals:
+        return list(ANALYSIS_GROUPS)
+    unknown = sorted(set(vals) - set(ANALYSIS_GROUPS))
+    if unknown:
+        raise ValueError(
+            f"Unknown RUN_ANALYSES values: {unknown}. "
+            f"Allowed: {list(ANALYSIS_GROUPS)} + ['all']"
+        )
+    return vals
+
+
+def _analysis_marker_paths(mouse_id, data_out_dir, fig_out_dir):
+    return {
+        "core": [
+            os.path.join(data_out_dir, f"{mouse_id}_statistics.json"),
+            os.path.join(data_out_dir, f"{mouse_id}_analysis_report.md"),
+            os.path.join(data_out_dir, "correlation_deciles.csv"),
+            os.path.join(data_out_dir, "trial_response_shape_summary.csv"),
+            os.path.join(data_out_dir, "sig_noise_strength_summary_by_condition.csv"),
+            os.path.join(data_out_dir, "noise_corr_decile_coupling.csv"),
+            os.path.join(fig_out_dir, "pairwise_correlation.png"),
+            os.path.join(fig_out_dir, "effective_dimensionality_by_class.png"),
+            os.path.join(fig_out_dir, "signal_noise_coupling_scatter_by_condition.png"),
+        ],
+        "decoder_task1_2": [
+            os.path.join(data_out_dir, "decoder_summary.csv"),
+            os.path.join(data_out_dir, "decoder_ablation_summary.csv"),
+            os.path.join(fig_out_dir, "decoder_confusion_matrix.png"),
+            os.path.join(fig_out_dir, "decoder_ablation_top10.png"),
+        ],
+        "fc_task3_6": [
+            os.path.join(data_out_dir, "fc_decoder_summary.csv"),
+            os.path.join(data_out_dir, "neuron_decoder_linking_detail.csv"),
+            os.path.join(data_out_dir, "fc_edge_decile_enrichment.csv"),
+            os.path.join(fig_out_dir, "fc_decoder_confusion_matrix.png"),
+            os.path.join(fig_out_dir, "neuron_decoder_linking_panel.png"),
+        ],
+        "shuffle": [
+            os.path.join(data_out_dir, "population_pattern_shuffle_manifest.csv"),
+            os.path.join(data_out_dir, "group_corr_shuffle_long.csv"),
+            os.path.join(data_out_dir, "group_shuffle_condition_stats.csv"),
+            os.path.join(fig_out_dir, "shuffle_condition_difference_by_metric.png"),
+        ],
+        "rsm_geometry": [
+            os.path.join(data_out_dir, "geometry_condition_level_long.csv"),
+            os.path.join(data_out_dir, "geometry_condition_pairwise.csv"),
+            os.path.join(data_out_dir, "geometry_condition_stats.md"),
+            os.path.join(fig_out_dir, "geometry_example_mouse_pc_scatter.png"),
+            os.path.join(fig_out_dir, "geometry_angle_condition.png"),
+            os.path.join(fig_out_dir, "geometry_orth_parallel_condition.png"),
+        ],
+    }
+
+
+def _selected_analyses_done(mouse_id, data_out_dir, fig_out_dir, run_analyses):
+    selected = _resolve_selected_analyses(run_analyses)
+    marker_map = _analysis_marker_paths(mouse_id, data_out_dir, fig_out_dir)
+    done_map = {}
+    for key in selected:
+        paths = marker_map[key]
+        done_map[key] = all(_nonempty_file(p) for p in paths)
+    return selected, done_map
+
 for idx, path in enumerate(data_paths):
-    data_path = base_dir + data_paths[idx] # 'M77_1031'
+    data_path = os.path.join(base_dir, path)
     print(f"Processing data from: {data_path}")
-    save_dir = "./results/" + data_paths[idx] 
+    save_dir = "./results/" + path
 
     data_out_dir = os.path.join(save_dir, "data")
     fig_out_dir = os.path.join(save_dir, "figures")
 
     os.makedirs(data_out_dir, exist_ok=True)
     os.makedirs(fig_out_dir, exist_ok=True)
+
+    current_mouse_id = os.path.basename(os.path.normpath(data_path))
+    selected_groups, done_map = _selected_analyses_done(
+        current_mouse_id, data_out_dir, fig_out_dir, RUN_ANALYSES
+    )
+    if all(done_map.values()):
+        print(
+            f"[*] Skip {current_mouse_id}: selected analyses already finished -> "
+            f"{', '.join(selected_groups)}"
+        )
+        continue
+    missing_groups = [k for k in selected_groups if not done_map[k]]
+    print(
+        f"[*] Run {current_mouse_id}: missing analyses -> "
+        f"{', '.join(missing_groups)}"
+    )
 
     # %% [markdown]
     # ## Baseline Response and Encoding
@@ -1151,6 +1254,411 @@ for idx, path in enumerate(data_paths):
         print(f"Condition {cls}: {value:.2f}")
 
     # %% [markdown]
+    # <a id="sec-81"></a>
+    # ## 8.1 RSM Geometry Analysis
+    #
+    # Quantify the geometric relationship between trial-cloud variability and condition mean axis.
+    #
+
+    # %%
+    import itertools
+
+    GEOM_EPS = 1e-12
+    GEOM_N_BOOT = 500
+
+
+    def _safe_unit(v, eps=GEOM_EPS):
+        v = np.asarray(v, dtype=float).ravel()
+        n = np.linalg.norm(v)
+        if not np.isfinite(n) or n <= eps:
+            return np.zeros_like(v), 0.0
+        return v / n, float(n)
+
+
+    def _geometry_metrics_from_trials(X_cond):
+        X = np.asarray(X_cond, dtype=float)
+        if X.ndim != 2 or X.shape[0] < 2:
+            return {
+                "n_trials": int(X.shape[0]) if X.ndim == 2 else 0,
+                "n_neurons": int(X.shape[1]) if X.ndim == 2 else 0,
+                "mean_norm": np.nan,
+                "angle_deg": np.nan,
+                "var_parallel": np.nan,
+                "var_orthogonal": np.nan,
+                "orth_parallel_ratio": np.nan,
+                "anisotropy_index": np.nan,
+                "lambda1": np.nan,
+                "lambda2": np.nan,
+            }
+
+        T, N = X.shape
+        mu = np.mean(X, axis=0)
+        mu_hat, mu_norm = _safe_unit(mu)
+        Y = X - mu
+
+        # PC1 of centered trial cloud
+        try:
+            _, _, vt = np.linalg.svd(Y, full_matrices=False)
+            v1 = vt[0]
+        except Exception:
+            v1 = np.zeros(N, dtype=float)
+            if N > 0:
+                v1[0] = 1.0
+        v1_u, _ = _safe_unit(v1)
+
+        if np.linalg.norm(mu_hat) <= GEOM_EPS or np.linalg.norm(v1_u) <= GEOM_EPS:
+            angle_deg = np.nan
+        else:
+            cosv = np.clip(np.abs(np.dot(mu_hat, v1_u)), 0.0, 1.0)
+            angle_deg = float(np.degrees(np.arccos(cosv)))
+
+        # Decompose trial vectors into parallel + orthogonal wrt mean axis
+        a = X @ mu_hat if np.linalg.norm(mu_hat) > GEOM_EPS else np.zeros(T, dtype=float)
+        ddof = 1 if T > 1 else 0
+        var_parallel = float(np.var(a, ddof=ddof))
+        r = X - np.outer(a, mu_hat)
+        var_orth = float(np.mean(np.sum(r ** 2, axis=1)))
+        ratio = float(var_orth / (var_parallel + GEOM_EPS))
+
+        # Spectrum-based anisotropy
+        try:
+            cov = np.cov(Y, rowvar=False)
+            eigvals = np.linalg.eigvalsh(cov)
+            eigvals = np.sort(np.maximum(eigvals, 0.0))[::-1]
+        except Exception:
+            eigvals = np.array([])
+        lam1 = float(eigvals[0]) if eigvals.size >= 1 else np.nan
+        lam2 = float(eigvals[1]) if eigvals.size >= 2 else np.nan
+        anis = float(lam1 / (np.nansum(eigvals) + GEOM_EPS)) if eigvals.size > 0 else np.nan
+
+        return {
+            "n_trials": int(T),
+            "n_neurons": int(N),
+            "mean_norm": float(mu_norm),
+            "angle_deg": angle_deg,
+            "var_parallel": var_parallel,
+            "var_orthogonal": var_orth,
+            "orth_parallel_ratio": ratio,
+            "anisotropy_index": anis,
+            "lambda1": lam1,
+            "lambda2": lam2,
+        }
+
+
+    def _bootstrap_geometry_distributions(X_cond, n_boot=GEOM_N_BOOT, seed=0):
+        X = np.asarray(X_cond, dtype=float)
+        if X.ndim != 2 or X.shape[0] < 2:
+            return {}
+        rng = np.random.default_rng(seed)
+        T = X.shape[0]
+        records = []
+        for _ in range(int(n_boot)):
+            idx_boot = rng.integers(0, T, size=T)
+            met = _geometry_metrics_from_trials(X[idx_boot])
+            records.append(met)
+        dfb = pd.DataFrame(records)
+        out = {}
+        for col in ["angle_deg", "orth_parallel_ratio", "var_parallel", "var_orthogonal", "anisotropy_index"]:
+            vals = dfb[col].astype(float).values if col in dfb.columns else np.array([])
+            vals = vals[np.isfinite(vals)]
+            out[col] = vals
+        return out
+
+
+    def _bootstrap_pairwise_from_distributions(dist_by_cond, metric, cond_order):
+        rows = []
+        for c1, c2 in itertools.combinations(cond_order, 2):
+            a = np.asarray(dist_by_cond.get(c1, {}).get(metric, []), dtype=float)
+            b = np.asarray(dist_by_cond.get(c2, {}).get(metric, []), dtype=float)
+            n = min(a.size, b.size)
+            if n == 0:
+                rows.append(
+                    {
+                        "metric": metric,
+                        "condition_1": c1,
+                        "condition_2": c2,
+                        "n_boot": 0,
+                        "mean_diff_boot": np.nan,
+                        "ci95_low": np.nan,
+                        "ci95_high": np.nan,
+                        "p_boot_two_sided": np.nan,
+                    }
+                )
+                continue
+            d = a[:n] - b[:n]
+            p_low = (np.sum(d <= 0) + 1.0) / (n + 1.0)
+            p_high = (np.sum(d >= 0) + 1.0) / (n + 1.0)
+            p_two = float(min(1.0, 2.0 * min(p_low, p_high)))
+            rows.append(
+                {
+                    "metric": metric,
+                    "condition_1": c1,
+                    "condition_2": c2,
+                    "n_boot": int(n),
+                    "mean_diff_boot": float(np.mean(d)),
+                    "ci95_low": float(np.quantile(d, 0.025)),
+                    "ci95_high": float(np.quantile(d, 0.975)),
+                    "p_boot_two_sided": p_two,
+                }
+            )
+        return rows
+
+
+    def _condition_order_from_labels(y, label_map):
+        classes = sorted(np.unique(np.asarray(y).astype(int)).tolist())
+        order = [c for c in [1, 2, 3] if c in classes]
+        order.extend([c for c in classes if c not in order])
+        return order, [label_map.get(int(c), str(c)) for c in order]
+
+
+    ordered_cls, ordered_cond_names = _condition_order_from_labels(y_resp, label_names)
+    geometry_rows = []
+    geometry_boot = {}
+    for cls in ordered_cls:
+        X_cls = np.asarray(X_resp[y_resp == cls], dtype=float)
+        cond_name = label_names.get(int(cls), str(cls))
+        met = _geometry_metrics_from_trials(X_cls)
+        geometry_rows.append(
+            {
+                "mouse": current_mouse_id,
+                "Class_ID": int(cls),
+                "Condition": cond_name,
+                "n_trials": met["n_trials"],
+                "n_neurons": met["n_neurons"],
+                "mean_norm": met["mean_norm"],
+                "angle_deg": met["angle_deg"],
+                "var_parallel": met["var_parallel"],
+                "var_orthogonal": met["var_orthogonal"],
+                "orth_parallel_ratio": met["orth_parallel_ratio"],
+                "anisotropy_index": met["anisotropy_index"],
+                "lambda1": met["lambda1"],
+                "lambda2": met["lambda2"],
+            }
+        )
+        geometry_boot[cond_name] = _bootstrap_geometry_distributions(
+            X_cls, n_boot=GEOM_N_BOOT, seed=20260329 + int(cls)
+        )
+
+    df_geometry = pd.DataFrame(geometry_rows)
+    geometry_csv = os.path.join(data_out_dir, "geometry_condition_level_long.csv")
+    df_geometry.to_csv(geometry_csv, index=False)
+    print(f"[*] Geometry condition-level table saved: {geometry_csv}")
+
+    # Pairwise bootstrap comparisons (single-mouse within-condition)
+    pair_rows = []
+    for m in ["angle_deg", "orth_parallel_ratio", "var_parallel", "var_orthogonal", "anisotropy_index"]:
+        pair_rows.extend(_bootstrap_pairwise_from_distributions(geometry_boot, m, ordered_cond_names))
+    df_geometry_pairwise = pd.DataFrame(pair_rows)
+    geometry_pairwise_csv = os.path.join(data_out_dir, "geometry_condition_pairwise.csv")
+    df_geometry_pairwise.to_csv(geometry_pairwise_csv, index=False)
+    print(f"[*] Geometry pairwise bootstrap table saved: {geometry_pairwise_csv}")
+
+    # Condition stats markdown
+    geometry_stats_md = os.path.join(data_out_dir, "geometry_condition_stats.md")
+    with open(geometry_stats_md, "w", encoding="utf-8") as f:
+        f.write("# RSM Geometry Condition-level Summary\n\n")
+        f.write("## Condition metrics\n\n")
+        f.write(df_geometry.to_markdown(index=False) + "\n\n")
+        f.write("## Pairwise bootstrap differences\n\n")
+        f.write(df_geometry_pairwise.to_markdown(index=False) + "\n")
+    print(f"[*] Geometry condition markdown saved: {geometry_stats_md}")
+
+    # Merge with Mean RSM / participants / effective dimensionality for model proxies
+    mean_rsm_map = {}
+    if "df_entropy" in globals() and isinstance(df_entropy, pd.DataFrame) and "Stimulus" in df_entropy.columns:
+        mean_rsm_map = {
+            str(r["Stimulus"]): float(r["Mean_Sim"])
+            for _, r in df_entropy.iterrows()
+            if "Mean_Sim" in r and pd.notna(r["Mean_Sim"])
+        }
+    effdim_map = {}
+    if "df_effective_dim" in globals() and isinstance(df_effective_dim, pd.DataFrame):
+        if {"Class_Name", "Effective_Dim_PR"}.issubset(set(df_effective_dim.columns)):
+            effdim_map = {
+                str(r["Class_Name"]): float(r["Effective_Dim_PR"])
+                for _, r in df_effective_dim.iterrows()
+                if pd.notna(r["Effective_Dim_PR"])
+            }
+    participants_name_map = {}
+    for cls, val in participants.items():
+        cond_name = label_names.get(int(cls), str(cls))
+        participants_name_map[cond_name] = float(val)
+
+    df_geom_model = df_geometry.copy()
+    df_geom_model["Mean_RSM_Sim"] = df_geom_model["Condition"].map(mean_rsm_map)
+    df_geom_model["Participants_Ratio"] = df_geom_model["Condition"].map(participants_name_map)
+    df_geom_model["Effective_Dim_PR"] = df_geom_model["Condition"].map(effdim_map)
+
+    def _fit_ols_single_mouse(df, y, x, model_name):
+        sub = df[[x, y]].dropna()
+        if len(sub) < 3:
+            return {
+                "model_name": model_name,
+                "formula": f"{y} ~ {x}",
+                "n": int(len(sub)),
+                "slope": np.nan,
+                "intercept": np.nan,
+                "r_value": np.nan,
+                "p_value": np.nan,
+                "aic_like": np.nan,
+                "bic_like": np.nan,
+                "note": "N too small for stable fit",
+            }
+        lr = stats.linregress(sub[x].values, sub[y].values)
+        yhat = lr.intercept + lr.slope * sub[x].values
+        resid = sub[y].values - yhat
+        n = len(sub)
+        k = 2
+        rss = float(np.sum(resid ** 2))
+        sigma2 = max(rss / max(1, n), GEOM_EPS)
+        loglik = float(-0.5 * n * (np.log(2 * np.pi * sigma2) + 1))
+        aic = float(2 * k - 2 * loglik)
+        bic = float(k * np.log(n) - 2 * loglik)
+        return {
+            "model_name": model_name,
+            "formula": f"{y} ~ {x}",
+            "n": int(n),
+            "slope": float(lr.slope),
+            "intercept": float(lr.intercept),
+            "r_value": float(lr.rvalue),
+            "p_value": float(lr.pvalue),
+            "aic_like": aic,
+            "bic_like": bic,
+            "note": "Single-mouse OLS proxy; group-level mixed model in integration.py",
+        }
+
+    model_rows = []
+    model_rows.append(_fit_ols_single_mouse(df_geom_model, "Mean_RSM_Sim", "angle_deg", "M1: MeanRSM~angle"))
+    model_rows.append(_fit_ols_single_mouse(df_geom_model, "Mean_RSM_Sim", "orth_parallel_ratio", "M2: MeanRSM~ratio"))
+    model_rows.append(_fit_ols_single_mouse(df_geom_model, "angle_deg", "Participants_Ratio", "A1: angle~participants"))
+    model_rows.append(_fit_ols_single_mouse(df_geom_model, "orth_parallel_ratio", "Participants_Ratio", "A2: ratio~participants"))
+    model_rows.append(_fit_ols_single_mouse(df_geom_model, "Mean_RSM_Sim", "Effective_Dim_PR", "D1: MeanRSM~effectiveDim"))
+    df_geometry_model_compare = pd.DataFrame(model_rows)
+    geom_model_compare_csv = os.path.join(data_out_dir, "geometry_rsm_model_compare.csv")
+    df_geometry_model_compare.to_csv(geom_model_compare_csv, index=False)
+    print(f"[*] Geometry model-compare table saved: {geom_model_compare_csv}")
+
+    # Dedicated markdown summaries (single-mouse proxy)
+    geom_rsm_md = os.path.join(data_out_dir, "geometry_rsm_lmm_summary.md")
+    with open(geom_rsm_md, "w", encoding="utf-8") as f:
+        f.write("# Geometry vs Mean RSM (Single-mouse proxy)\n\n")
+        f.write(df_geometry_model_compare[df_geometry_model_compare["model_name"].str.startswith("M")].to_markdown(index=False) + "\n")
+    geom_alloc_md = os.path.join(data_out_dir, "geometry_allocation_lmm_summary.md")
+    with open(geom_alloc_md, "w", encoding="utf-8") as f:
+        f.write("# Geometry vs Participants Ratio (Single-mouse proxy)\n\n")
+        f.write(df_geometry_model_compare[df_geometry_model_compare["model_name"].str.startswith("A")].to_markdown(index=False) + "\n")
+    geom_vs_dim_csv = os.path.join(data_out_dir, "geometry_vs_dimensionality_model_compare.csv")
+    df_geometry_model_compare[df_geometry_model_compare["model_name"].str.startswith(("M", "D"))].to_csv(geom_vs_dim_csv, index=False)
+    print(f"[*] Geometry markdown summaries saved: {geom_rsm_md}, {geom_alloc_md}")
+    print(f"[*] Geometry-vs-dimensionality model table saved: {geom_vs_dim_csv}")
+
+    # -------- Geometry figures --------
+    from matplotlib.patches import Ellipse
+
+    def _plot_cov_ellipse(ax, xy, color):
+        if xy.shape[0] < 3:
+            return
+        cov = np.cov(xy.T)
+        vals, vecs = np.linalg.eigh(cov)
+        order = vals.argsort()[::-1]
+        vals = vals[order]
+        vecs = vecs[:, order]
+        width, height = 2.0 * np.sqrt(np.maximum(vals[:2], 1e-12))
+        angle = np.degrees(np.arctan2(vecs[1, 0], vecs[0, 0]))
+        ell = Ellipse(
+            xy=(np.mean(xy[:, 0]), np.mean(xy[:, 1])),
+            width=width,
+            height=height,
+            angle=angle,
+            edgecolor=color,
+            facecolor=color,
+            alpha=0.12,
+            lw=1.8,
+        )
+        ax.add_patch(ell)
+
+    # G1: per-condition PC scatter with mean-axis and PC1 arrows
+    fig, axes = plt.subplots(1, len(ordered_cls), figsize=(4.8 * len(ordered_cls), 4.2), dpi=180, sharex=False, sharey=False)
+    axes = np.atleast_1d(axes).ravel()
+    for ax, cls in zip(axes, ordered_cls):
+        cond_name = label_names.get(int(cls), str(cls))
+        X_cls = np.asarray(X_resp[y_resp == cls], dtype=float)
+        mu = np.mean(X_cls, axis=0)
+        Y = X_cls - mu
+        try:
+            _, _, vt = np.linalg.svd(Y, full_matrices=False)
+            basis = vt[:2].T  # (N,2)
+            z = Y @ basis
+            mu_proj = mu @ basis
+        except Exception:
+            z = np.zeros((X_cls.shape[0], 2))
+            mu_proj = np.zeros(2)
+        ax.scatter(z[:, 0], z[:, 1], s=22, alpha=0.45, color=class_colors.get(int(cls), "#4c4c4c"), edgecolor="none")
+        _plot_cov_ellipse(ax, z, class_colors.get(int(cls), "#4c4c4c"))
+        # PC1 axis in local PC coordinates is x-axis
+        scale = max(np.nanstd(z[:, 0]), np.nanstd(z[:, 1]), 1e-3)
+        ax.arrow(0, 0, 1.0 * scale, 0, color="#111111", width=0.0, head_width=0.06 * scale, length_includes_head=True)
+        ax.arrow(0, 0, mu_proj[0], mu_proj[1], color="#8C4A3E", width=0.0, head_width=0.06 * scale, length_includes_head=True)
+        angle_val = float(df_geometry.loc[df_geometry["Condition"] == cond_name, "angle_deg"].iloc[0]) if (df_geometry["Condition"] == cond_name).any() else np.nan
+        ax.set_title(f"{cond_name}\nangle={angle_val:.2f} deg")
+        ax.set_xlabel("PC1")
+        ax.set_ylabel("PC2")
+        ax.axhline(0, color="#cccccc", lw=0.8)
+        ax.axvline(0, color="#cccccc", lw=0.8)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+    fig.tight_layout()
+    g1_png = os.path.join(fig_out_dir, "geometry_example_mouse_pc_scatter.png")
+    g1_pdf = os.path.join(fig_out_dir, "geometry_example_mouse_pc_scatter.pdf")
+    fig.savefig(g1_png, dpi=300, bbox_inches="tight")
+    fig.savefig(g1_pdf, bbox_inches="tight")
+    plt.show()
+
+    # G2/G3: condition comparisons
+    plot_order = [label_names.get(int(c), str(c)) for c in ordered_cls]
+
+    def _plot_single_metric_condition(df, metric, ylabel, stem):
+        figm, axm = plt.subplots(figsize=(5.2, 4.4), dpi=180)
+        sub = df.copy()
+        sub["Condition"] = pd.Categorical(sub["Condition"], categories=plot_order, ordered=True)
+        sns.barplot(data=sub, x="Condition", y=metric, order=plot_order, palette=[class_colors.get(c, "#4c4c4c") for c in ordered_cls], ax=axm, alpha=0.85)
+        sns.stripplot(data=sub, x="Condition", y=metric, order=plot_order, color="#222222", size=5, jitter=False, ax=axm)
+        axm.set_xlabel("")
+        axm.set_ylabel(ylabel)
+        axm.spines["top"].set_visible(False)
+        axm.spines["right"].set_visible(False)
+        axm.grid(axis="y", linestyle="--", alpha=0.25)
+        figm.tight_layout()
+        out_png = os.path.join(fig_out_dir, f"{stem}.png")
+        out_pdf = os.path.join(fig_out_dir, f"{stem}.pdf")
+        figm.savefig(out_png, dpi=300, bbox_inches="tight")
+        figm.savefig(out_pdf, bbox_inches="tight")
+        plt.show()
+        return out_png, out_pdf
+
+    _plot_single_metric_condition(df_geometry, "angle_deg", "Angle (deg)", "geometry_angle_condition")
+    _plot_single_metric_condition(df_geometry, "orth_parallel_ratio", "Orth/Parallel variance ratio", "geometry_orth_parallel_condition")
+
+    # G4: geometry vs MeanRSM (single-mouse scatter)
+    for x_metric, stem in [("angle_deg", "geometry_angle_vs_rsm"), ("orth_parallel_ratio", "geometry_ratio_vs_rsm")]:
+        figm, axm = plt.subplots(figsize=(5.0, 4.4), dpi=180)
+        sub = df_geom_model[[x_metric, "Mean_RSM_Sim", "Condition"]].dropna().copy()
+        sns.regplot(data=sub, x=x_metric, y="Mean_RSM_Sim", scatter=False, color="#404040", ax=axm, line_kws={"lw": 2})
+        sns.scatterplot(data=sub, x=x_metric, y="Mean_RSM_Sim", hue="Condition", hue_order=plot_order, palette={label_names.get(int(k), str(k)): v for k, v in class_colors.items()}, s=85, ax=axm)
+        axm.set_xlabel(x_metric)
+        axm.set_ylabel("Mean RSM similarity")
+        axm.spines["top"].set_visible(False)
+        axm.spines["right"].set_visible(False)
+        axm.grid(axis="y", linestyle="--", alpha=0.25)
+        axm.legend(frameon=False, title="")
+        figm.tight_layout()
+        out_png = os.path.join(fig_out_dir, f"{stem}.png")
+        out_pdf = os.path.join(fig_out_dir, f"{stem}.pdf")
+        figm.savefig(out_png, dpi=300, bbox_inches="tight")
+        figm.savefig(out_pdf, bbox_inches="tight")
+        plt.show()
+
+    # %% [markdown]
     # <a id="sec-9"></a>
     # ## 9. Strong vs Weak Connectivity
     # 
@@ -1652,7 +2160,7 @@ for idx, path in enumerate(data_paths):
         print(f'[*] Markdown report generated: {md_path}')
 
     # --- Execute export after all analyses ---
-    current_mouse_id = data_paths[idx]
+    current_mouse_id = os.path.basename(os.path.normpath(data_path))
 
     export_mouse_results(
         mouse_id=current_mouse_id,
@@ -3222,4 +3730,309 @@ for idx, path in enumerate(data_paths):
     display(Markdown('\\n'.join(lines)))
 
 
+    # %% [markdown]
+    # <a id="sec-13"></a>
+    # ## 13. Population-Pattern Shuffle Dependence
+    # 
+    # Run neuron-wise trial permutation analysis and save shuffle outputs.
+    # 
+    # 
 
+    # %%
+    import importlib
+    import population_shuffle_analysis as psa
+    importlib.reload(psa)
+    from population_shuffle_analysis import run_population_pattern_shuffle_analysis
+
+
+
+    # %%
+    shuffle_result = run_population_pattern_shuffle_analysis(
+        segments_spi=segments_spi,
+        labels_spi=labels_spi,
+        data_out_dir=data_out_dir,
+        fig_out_dir=fig_out_dir,
+        mouse_id=current_mouse_id if 'current_mouse_id' in globals() else 'mouse_unknown',
+        label_names=label_names if 'label_names' in globals() else None,
+        class_colors=class_colors if 'class_colors' in globals() else None,
+        rr_neurons_spi=rr_neurons_spi if 'rr_neurons_spi' in globals() else None,
+        shuffle_repeats=200,
+        shuffle_seed=20260328,
+        shuffle_fractions=(0.0, 0.25, 0.5, 0.75, 1.0),
+        response_window=slice(10, 13),
+        rsm_bins=50,
+        show_live_plots=True,
+        verbose=True,
+    )
+    shuffle_result['outputs']
+
+
+
+    # %% [markdown]
+    # ### Generated Outputs
+    # 
+    # - `population_pattern_shuffle_manifest.csv`
+    # - `group_corr_shuffle_long.csv`
+    # - `group_corr_decile_shuffle_long.csv`
+    # - `group_rsm_shuffle_long.csv`
+    # - `group_shuffle_delta_long.csv`
+    # - `group_shuffle_dose_response_long.csv`
+    # - `group_allocation_shuffle_long.csv` (includes `pr_mean/pr_std/pr_norm_mean`)
+    # - `group_shuffle_effect_stats.csv`
+    # - `group_shuffle_delta_stats.csv` (includes `Delta_PR_Mean`)
+    # - `group_shuffle_condition_summary.csv`
+    # - `group_shuffle_condition_stats.csv`
+    # - `group_shuffle_sync_contribution.csv`
+    # - `group_shuffle_sync_contribution_repeats.csv`
+    # 
+    # 
+
+    # %% [markdown]
+    # <a id="sec-14"></a>
+    # ## 14. Shuffled Condition Differences
+    # 
+    # Focus on condition differences inside shuffled surrogates (including PR).
+    # 
+    # 
+
+    # %%
+    import pandas as pd
+    from IPython.display import Image, display
+
+    shuf_summary = shuffle_result['tables']['shuffled_condition_summary'].copy()
+    shuf_stats = shuffle_result['tables']['shuffled_condition_stats'].copy()
+
+    print('[*] Shuffled condition summary (mean ± sem)')
+    display(shuf_summary.sort_values(['metric', 'condition']).reset_index(drop=True))
+
+    print('[*] Shuffled condition tests (Friedman + pairwise Wilcoxon)')
+    display(shuf_stats.sort_values(['metric', 'test', 'comparison']).reset_index(drop=True))
+
+    fig_path = shuffle_result['figures'].get('shuffled_condition_diff', None)
+    if fig_path is not None:
+        display(Image(filename=fig_path))
+
+
+
+    # %% [markdown]
+    # <a id="sec-15"></a>
+    # ## 15. Final Integrated Export
+    # 
+    # Write final JSON/CSV/Markdown report with both baseline analysis and shuffle analysis.
+    # 
+    # 
+
+    # %%
+    import json
+    import os
+    import pandas as pd
+    from datetime import datetime
+
+
+    def export_mouse_results_integrated(
+        mouse_id,
+        df_entropy,
+        df_corr_strength,
+        df_corr_deciles,
+        participants_dict,
+        save_dir,
+        fig_dir,
+        shuffle_res=None,
+        geometry_res=None,
+    ):
+        os.makedirs(save_dir, exist_ok=True)
+
+        entropy_records = df_entropy.to_dict(orient='records')
+        corr_records = df_corr_strength.to_dict(orient='records')
+        corr_decile_records = df_corr_deciles.to_dict(orient='records')
+
+        shuffle_outputs = {}
+        shuffle_figs = {}
+        shuffle_effect_records = []
+        shuffle_cond_summary_records = []
+        shuffle_cond_stats_records = []
+        shuffle_sync_contrib_records = []
+        geometry_outputs = {}
+        geometry_figs = {}
+        geometry_condition_records = []
+        geometry_pairwise_records = []
+        geometry_model_compare_records = []
+        if shuffle_res is not None:
+            shuffle_outputs = shuffle_res.get('outputs', {})
+            shuffle_figs = shuffle_res.get('figures', {})
+            tables = shuffle_res.get('tables', {})
+            if isinstance(tables.get('effect_stats', None), pd.DataFrame):
+                shuffle_effect_records = tables['effect_stats'].to_dict(orient='records')
+            if isinstance(tables.get('shuffled_condition_summary', None), pd.DataFrame):
+                shuffle_cond_summary_records = tables['shuffled_condition_summary'].to_dict(orient='records')
+            if isinstance(tables.get('shuffled_condition_stats', None), pd.DataFrame):
+                shuffle_cond_stats_records = tables['shuffled_condition_stats'].to_dict(orient='records')
+            if isinstance(tables.get('sync_contribution', None), pd.DataFrame):
+                shuffle_sync_contrib_records = tables['sync_contribution'].to_dict(orient='records')
+        if geometry_res is not None:
+            geometry_outputs = geometry_res.get('outputs', {})
+            geometry_figs = geometry_res.get('figures', {})
+            tables = geometry_res.get('tables', {})
+            if isinstance(tables.get('condition_level', None), pd.DataFrame):
+                geometry_condition_records = tables['condition_level'].to_dict(orient='records')
+            if isinstance(tables.get('condition_pairwise', None), pd.DataFrame):
+                geometry_pairwise_records = tables['condition_pairwise'].to_dict(orient='records')
+            if isinstance(tables.get('model_compare', None), pd.DataFrame):
+                geometry_model_compare_records = tables['model_compare'].to_dict(orient='records')
+
+        mouse_data = {
+            'mouse_id': mouse_id,
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'entropy_metrics': entropy_records,
+            'network_correlation': corr_records,
+            'network_correlation_deciles': corr_decile_records,
+            'rr_participants_ratio': participants_dict,
+            'shuffle_outputs': shuffle_outputs,
+            'shuffle_effect_stats': shuffle_effect_records,
+            'shuffle_condition_summary': shuffle_cond_summary_records,
+            'shuffle_condition_stats': shuffle_cond_stats_records,
+            'shuffle_sync_contribution': shuffle_sync_contrib_records,
+            'geometry_outputs': geometry_outputs,
+            'geometry_condition_level': geometry_condition_records,
+            'geometry_condition_pairwise': geometry_pairwise_records,
+            'geometry_model_compare': geometry_model_compare_records,
+        }
+
+        json_path = os.path.join(save_dir, f'{mouse_id}_statistics.json')
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump(mouse_data, f, indent=4)
+
+        decile_csv_path = os.path.join(save_dir, f'{mouse_id}_correlation_deciles.csv')
+        df_corr_deciles.to_csv(decile_csv_path, index=False)
+
+        print(f'[*] Structured statistics saved to: {json_path}')
+        print(f'[*] Decile-level correlation data saved to: {decile_csv_path}')
+
+        md_path = os.path.join(save_dir, f'{mouse_id}_analysis_report.md')
+
+        def dicts_to_md_table(dict_list):
+            if not dict_list:
+                return ''
+            headers = list(dict_list[0].keys())
+            header_row = '| ' + ' | '.join(headers) + ' |'
+            sep_row = '| ' + ' | '.join(['---'] * len(headers)) + ' |'
+            rows = []
+            for d in dict_list:
+                formatted_vals = [f'{v:.4f}' if isinstance(v, float) else str(v) for v in d.values()]
+                rows.append('| ' + ' | '.join(formatted_vals) + ' |')
+            return '\n'.join([header_row, sep_row] + rows)
+
+        with open(md_path, 'w', encoding='utf-8') as f:
+            f.write(f'# Mouse Neural Activity Report - {mouse_id}\n\n')
+            f.write(f'**Generated At**: {mouse_data["timestamp"]}\n\n')
+
+            f.write('## 1. RSM and Shannon Entropy\n\n')
+            f.write('Metrics for representation stability and variability across stimulus conditions.\n\n')
+            f.write(dicts_to_md_table(entropy_records) + '\n\n')
+
+            f.write('## 2. Pairwise Network Correlation Summary\n\n')
+            f.write('Difference between lowest and highest correlation tails.\n\n')
+            f.write(dicts_to_md_table(corr_records) + '\n\n')
+
+            f.write('## 2.1 Decile-wise Correlation Strength (Every 10%)\n\n')
+            f.write('Connectivity values are sorted by raw correlation and split into 10 equal bins.\n\n')
+            f.write(dicts_to_md_table(corr_decile_records[:30]) + '\n\n')
+
+            f.write('## 3. RR Participant Ratio\n\n')
+            f.write('Response ratio of class-specific RR neurons relative to other RR neurons.\n\n')
+            participants_rows = [{'Condition': k, 'Response_Ratio': v} for k, v in participants_dict.items()]
+            f.write(dicts_to_md_table(participants_rows) + '\n\n')
+
+            if shuffle_res is not None:
+                f.write('## 4. Shuffle: Original vs Shuffled Effects\n\n')
+                f.write(dicts_to_md_table(shuffle_effect_records) + '\n\n')
+
+                f.write('## 5. Shuffle: Condition Differences within Surrogates\n\n')
+                f.write('### 5.1 Summary (mean/sem)\n\n')
+                f.write(dicts_to_md_table(shuffle_cond_summary_records) + '\n\n')
+                f.write('### 5.2 Friedman + Wilcoxon\n\n')
+                f.write(dicts_to_md_table(shuffle_cond_stats_records) + '\n\n')
+
+                f.write('## 6. Shuffle: Synchrony Contribution (Random - Coherent)\n\n')
+                f.write(dicts_to_md_table(shuffle_sync_contrib_records) + '\n\n')
+
+                f.write('## 7. Shuffle Output Files\n\n')
+                for k, v in shuffle_outputs.items():
+                    f.write(f'- {k}: `{v}`\n')
+                f.write('\n')
+
+                f.write('## 8. Shuffle Figures\n\n')
+                for k, v in shuffle_figs.items():
+                    rel = os.path.basename(v)
+                    f.write(f'- {k}: `./figures/{rel}`\n')
+                f.write('\n')
+
+            if geometry_res is not None:
+                f.write('## 9. Geometry: Condition-level Metrics\n\n')
+                f.write(dicts_to_md_table(geometry_condition_records) + '\n\n')
+                f.write('## 10. Geometry: Pairwise Bootstrap Tests\n\n')
+                f.write(dicts_to_md_table(geometry_pairwise_records) + '\n\n')
+                f.write('## 11. Geometry: Model Compare\n\n')
+                f.write(dicts_to_md_table(geometry_model_compare_records) + '\n\n')
+                f.write('## 12. Geometry Output Files\n\n')
+                for k, v in geometry_outputs.items():
+                    f.write(f'- {k}: `{v}`\n')
+                f.write('\n')
+                f.write('## 13. Geometry Figures\n\n')
+                for k, v in geometry_figs.items():
+                    rel = os.path.basename(v)
+                    f.write(f'- {k}: `./figures/{rel}`\n')
+                f.write('\n')
+
+            f.write('## 14. Figure Index\n\n')
+            f.write('- Preference-sorted heatmap: `./figures/neural_patterns_preference_sorted.png`\n')
+            f.write('- Hierarchical clustermap: `./figures/neural_patterns_clustermap.png`\n')
+            f.write('- RSM similarity distribution: `./figures/similarity_distribution.png`\n')
+            f.write('- Pairwise correlation summary: `./figures/pairwise_correlation.png`\n')
+            f.write('- Decile-wise line chart: `./figures/pairwise_correlation_deciles_line.png`\n')
+
+        print(f'[*] Markdown report generated: {md_path}')
+        return {"json_path": json_path, "md_path": md_path}
+
+
+    geometry_result = None
+    if 'df_geometry' in globals() and isinstance(df_geometry, pd.DataFrame):
+        geometry_outputs = {
+            "condition_level_long": geometry_csv if 'geometry_csv' in globals() else "",
+            "condition_pairwise": geometry_pairwise_csv if 'geometry_pairwise_csv' in globals() else "",
+            "condition_stats_md": geometry_stats_md if 'geometry_stats_md' in globals() else "",
+            "rsm_lmm_summary_md": geom_rsm_md if 'geom_rsm_md' in globals() else "",
+            "model_compare_csv": geom_model_compare_csv if 'geom_model_compare_csv' in globals() else "",
+            "allocation_lmm_summary_md": geom_alloc_md if 'geom_alloc_md' in globals() else "",
+            "vs_dimensionality_csv": geom_vs_dim_csv if 'geom_vs_dim_csv' in globals() else "",
+        }
+        geometry_figs = {
+            "example_pc_scatter": g1_png if 'g1_png' in globals() else "",
+            "angle_condition": os.path.join(fig_out_dir, "geometry_angle_condition.png"),
+            "orth_parallel_condition": os.path.join(fig_out_dir, "geometry_orth_parallel_condition.png"),
+            "angle_vs_rsm": os.path.join(fig_out_dir, "geometry_angle_vs_rsm.png"),
+            "ratio_vs_rsm": os.path.join(fig_out_dir, "geometry_ratio_vs_rsm.png"),
+        }
+        geometry_result = {
+            "outputs": {k: v for k, v in geometry_outputs.items() if isinstance(v, str) and len(v) > 0},
+            "figures": {k: v for k, v in geometry_figs.items() if isinstance(v, str) and len(v) > 0},
+            "tables": {
+                "condition_level": df_geometry if 'df_geometry' in globals() else pd.DataFrame(),
+                "condition_pairwise": df_geometry_pairwise if 'df_geometry_pairwise' in globals() else pd.DataFrame(),
+                "model_compare": df_geometry_model_compare if 'df_geometry_model_compare' in globals() else pd.DataFrame(),
+            },
+        }
+
+    current_mouse_id = os.path.basename(os.path.normpath(data_path))
+    final_export = export_mouse_results_integrated(
+        mouse_id=current_mouse_id,
+        df_entropy=df_entropy,
+        df_corr_strength=df_corr_strength,
+        df_corr_deciles=df_corr_deciles,
+        participants_dict=participants,
+        save_dir=data_out_dir,
+        fig_dir=fig_out_dir,
+        shuffle_res=shuffle_result if 'shuffle_result' in globals() else None,
+        geometry_res=geometry_result,
+    )
+    final_export
