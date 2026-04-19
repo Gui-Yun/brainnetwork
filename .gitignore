@@ -8,6 +8,11 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Data/results artifacts
 *.csv
 results/M*/
 result/
+
+# Vendored external repository
+src/CaImAn/

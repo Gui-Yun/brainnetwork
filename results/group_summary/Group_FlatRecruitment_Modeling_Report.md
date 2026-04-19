@@ -1,0 +1,192 @@
+# Group Flat-Recruitment Modeling Report (v2)
+
+## Model variants
+
+tau_core, tau_core_spatial_weak, tau_only, tau_spatial, tau_spatial_weak, tau_weak
+
+## Tau slope tests (Wilcoxon against 0)
+
+```
+                                 metric         model_variant  Condition  n_mice    mean_slope                 test  p_value
+           effective_participation_prop              tau_core Convergent       7      0.036693 Wilcoxon(slope vs 0) 0.015625
+           effective_participation_prop              tau_core  Divergent       7      0.037497 Wilcoxon(slope vs 0) 0.015625
+           effective_participation_prop              tau_core     Random       7      0.052706 Wilcoxon(slope vs 0) 0.015625
+           effective_participation_prop tau_core_spatial_weak Convergent       7      0.036453 Wilcoxon(slope vs 0) 0.015625
+           effective_participation_prop tau_core_spatial_weak  Divergent       7      0.036574 Wilcoxon(slope vs 0) 0.015625
+           effective_participation_prop tau_core_spatial_weak     Random       7      0.051754 Wilcoxon(slope vs 0) 0.015625
+           effective_participation_prop              tau_only Convergent       7      0.228845 Wilcoxon(slope vs 0) 0.015625
+           effective_participation_prop              tau_only  Divergent       7      0.224094 Wilcoxon(slope vs 0) 0.015625
+           effective_participation_prop              tau_only     Random       7      0.267560 Wilcoxon(slope vs 0) 0.015625
+           effective_participation_prop           tau_spatial Convergent       7      0.232548 Wilcoxon(slope vs 0) 0.015625
+           effective_participation_prop           tau_spatial  Divergent       7      0.225778 Wilcoxon(slope vs 0) 0.015625
+           effective_participation_prop           tau_spatial     Random       7      0.264848 Wilcoxon(slope vs 0) 0.015625
+           effective_participation_prop      tau_spatial_weak Convergent       7      0.232548 Wilcoxon(slope vs 0) 0.015625
+           effective_participation_prop      tau_spatial_weak  Divergent       7      0.225778 Wilcoxon(slope vs 0) 0.015625
+           effective_participation_prop      tau_spatial_weak     Random       7      0.264848 Wilcoxon(slope vs 0) 0.015625
+           effective_participation_prop              tau_weak Convergent       7      0.228845 Wilcoxon(slope vs 0) 0.015625
+           effective_participation_prop              tau_weak  Divergent       7      0.224094 Wilcoxon(slope vs 0) 0.015625
+           effective_participation_prop              tau_weak     Random       7      0.267560 Wilcoxon(slope vs 0) 0.015625
+                  flatness_entropy_norm              tau_core Convergent       7      0.007231 Wilcoxon(slope vs 0) 0.015625
+                  flatness_entropy_norm              tau_core  Divergent       7      0.007286 Wilcoxon(slope vs 0) 0.015625
+                  flatness_entropy_norm              tau_core     Random       7      0.010989 Wilcoxon(slope vs 0) 0.015625
+                  flatness_entropy_norm tau_core_spatial_weak Convergent       7      0.007307 Wilcoxon(slope vs 0) 0.015625
+                  flatness_entropy_norm tau_core_spatial_weak  Divergent       7      0.007251 Wilcoxon(slope vs 0) 0.015625
+                  flatness_entropy_norm tau_core_spatial_weak     Random       7      0.011116 Wilcoxon(slope vs 0) 0.015625
+                  flatness_entropy_norm              tau_only Convergent       7      0.054131 Wilcoxon(slope vs 0) 0.015625
+                  flatness_entropy_norm              tau_only  Divergent       7      0.052621 Wilcoxon(slope vs 0) 0.015625
+                  flatness_entropy_norm              tau_only     Random       7      0.070611 Wilcoxon(slope vs 0) 0.015625
+                  flatness_entropy_norm           tau_spatial Convergent       7      0.060499 Wilcoxon(slope vs 0) 0.015625
+                  flatness_entropy_norm           tau_spatial  Divergent       7      0.058953 Wilcoxon(slope vs 0) 0.015625
+                  flatness_entropy_norm           tau_spatial     Random       7      0.078302 Wilcoxon(slope vs 0) 0.015625
+                  flatness_entropy_norm      tau_spatial_weak Convergent       7      0.060499 Wilcoxon(slope vs 0) 0.015625
+                  flatness_entropy_norm      tau_spatial_weak  Divergent       7      0.058953 Wilcoxon(slope vs 0) 0.015625
+                  flatness_entropy_norm      tau_spatial_weak     Random       7      0.078302 Wilcoxon(slope vs 0) 0.015625
+                  flatness_entropy_norm              tau_weak Convergent       7      0.054131 Wilcoxon(slope vs 0) 0.015625
+                  flatness_entropy_norm              tau_weak  Divergent       7      0.052621 Wilcoxon(slope vs 0) 0.015625
+                  flatness_entropy_norm              tau_weak     Random       7      0.070611 Wilcoxon(slope vs 0) 0.015625
+              integration_pairwise_span              tau_core Convergent       7     -1.052785 Wilcoxon(slope vs 0) 0.375000
+              integration_pairwise_span              tau_core  Divergent       7     -1.590554 Wilcoxon(slope vs 0) 0.078125
+              integration_pairwise_span              tau_core     Random       7     -3.785993 Wilcoxon(slope vs 0) 0.031250
+              integration_pairwise_span tau_core_spatial_weak Convergent       7     -1.100153 Wilcoxon(slope vs 0) 0.218750
+              integration_pairwise_span tau_core_spatial_weak  Divergent       7     -1.436779 Wilcoxon(slope vs 0) 0.046875
+              integration_pairwise_span tau_core_spatial_weak     Random       7     -3.538628 Wilcoxon(slope vs 0) 0.031250
+              integration_pairwise_span              tau_only Convergent       7    -20.437645 Wilcoxon(slope vs 0) 0.046875
+              integration_pairwise_span              tau_only  Divergent       7    -20.443892 Wilcoxon(slope vs 0) 0.031250
+              integration_pairwise_span              tau_only     Random       7    -32.735474 Wilcoxon(slope vs 0) 0.031250
+              integration_pairwise_span           tau_spatial Convergent       7    -18.079381 Wilcoxon(slope vs 0) 0.078125
+              integration_pairwise_span           tau_spatial  Divergent       7    -18.057345 Wilcoxon(slope vs 0) 0.031250
+              integration_pairwise_span           tau_spatial     Random       7    -30.705178 Wilcoxon(slope vs 0) 0.031250
+              integration_pairwise_span      tau_spatial_weak Convergent       7    -18.079381 Wilcoxon(slope vs 0) 0.078125
+              integration_pairwise_span      tau_spatial_weak  Divergent       7    -18.057345 Wilcoxon(slope vs 0) 0.031250
+              integration_pairwise_span      tau_spatial_weak     Random       7    -30.705178 Wilcoxon(slope vs 0) 0.031250
+              integration_pairwise_span              tau_weak Convergent       7    -20.437645 Wilcoxon(slope vs 0) 0.046875
+              integration_pairwise_span              tau_weak  Divergent       7    -20.443892 Wilcoxon(slope vs 0) 0.031250
+              integration_pairwise_span              tau_weak     Random       7    -32.735474 Wilcoxon(slope vs 0) 0.031250
+                     integration_radius              tau_core Convergent       7   -701.518450 Wilcoxon(slope vs 0) 0.218750
+                     integration_radius              tau_core  Divergent       7  -1155.409899 Wilcoxon(slope vs 0) 0.031250
+                     integration_radius              tau_core     Random       7  -2559.779177 Wilcoxon(slope vs 0) 0.031250
+                     integration_radius tau_core_spatial_weak Convergent       7   -830.232420 Wilcoxon(slope vs 0) 0.156250
+                     integration_radius tau_core_spatial_weak  Divergent       7  -1176.323598 Wilcoxon(slope vs 0) 0.031250
+                     integration_radius tau_core_spatial_weak     Random       7  -2600.479784 Wilcoxon(slope vs 0) 0.031250
+                     integration_radius              tau_only Convergent       7 -15659.728561 Wilcoxon(slope vs 0) 0.046875
+                     integration_radius              tau_only  Divergent       7 -15709.074158 Wilcoxon(slope vs 0) 0.031250
+                     integration_radius              tau_only     Random       7 -26372.360860 Wilcoxon(slope vs 0) 0.031250
+                     integration_radius           tau_spatial Convergent       7 -17024.277739 Wilcoxon(slope vs 0) 0.046875
+                     integration_radius           tau_spatial  Divergent       7 -16996.772125 Wilcoxon(slope vs 0) 0.031250
+                     integration_radius           tau_spatial     Random       7 -28978.052868 Wilcoxon(slope vs 0) 0.031250
+                     integration_radius      tau_spatial_weak Convergent       7 -17024.277739 Wilcoxon(slope vs 0) 0.046875
+                     integration_radius      tau_spatial_weak  Divergent       7 -16996.772125 Wilcoxon(slope vs 0) 0.031250
+                     integration_radius      tau_spatial_weak     Random       7 -28978.052868 Wilcoxon(slope vs 0) 0.031250
+                     integration_radius              tau_weak Convergent       7 -15659.728561 Wilcoxon(slope vs 0) 0.046875
+                     integration_radius              tau_weak  Divergent       7 -15709.074158 Wilcoxon(slope vs 0) 0.031250
+                     integration_radius              tau_weak     Random       7 -26372.360860 Wilcoxon(slope vs 0) 0.031250
+                 mean_cosine_similarity              tau_core Convergent       7      0.051830 Wilcoxon(slope vs 0) 0.015625
+                 mean_cosine_similarity              tau_core  Divergent       7      0.052150 Wilcoxon(slope vs 0) 0.015625
+                 mean_cosine_similarity              tau_core     Random       7      0.047999 Wilcoxon(slope vs 0) 0.015625
+                 mean_cosine_similarity tau_core_spatial_weak Convergent       7      0.055698 Wilcoxon(slope vs 0) 0.015625
+                 mean_cosine_similarity tau_core_spatial_weak  Divergent       7      0.055777 Wilcoxon(slope vs 0) 0.015625
+                 mean_cosine_similarity tau_core_spatial_weak     Random       7      0.053006 Wilcoxon(slope vs 0) 0.015625
+                 mean_cosine_similarity              tau_only Convergent       7      0.123261 Wilcoxon(slope vs 0) 0.015625
+                 mean_cosine_similarity              tau_only  Divergent       7      0.129921 Wilcoxon(slope vs 0) 0.015625
+                 mean_cosine_similarity              tau_only     Random       7      0.099711 Wilcoxon(slope vs 0) 0.015625
+                 mean_cosine_similarity           tau_spatial Convergent       7      0.114298 Wilcoxon(slope vs 0) 0.015625
+                 mean_cosine_similarity           tau_spatial  Divergent       7      0.123164 Wilcoxon(slope vs 0) 0.015625
+                 mean_cosine_similarity           tau_spatial     Random       7      0.098475 Wilcoxon(slope vs 0) 0.015625
+                 mean_cosine_similarity      tau_spatial_weak Convergent       7      0.114298 Wilcoxon(slope vs 0) 0.015625
+                 mean_cosine_similarity      tau_spatial_weak  Divergent       7      0.123164 Wilcoxon(slope vs 0) 0.015625
+                 mean_cosine_similarity      tau_spatial_weak     Random       7      0.098475 Wilcoxon(slope vs 0) 0.015625
+                 mean_cosine_similarity              tau_weak Convergent       7      0.123261 Wilcoxon(slope vs 0) 0.015625
+                 mean_cosine_similarity              tau_weak  Divergent       7      0.129921 Wilcoxon(slope vs 0) 0.015625
+                 mean_cosine_similarity              tau_weak     Random       7      0.099711 Wilcoxon(slope vs 0) 0.015625
+              orthogonal_parallel_ratio              tau_core Convergent       7     -2.257220 Wilcoxon(slope vs 0) 0.015625
+              orthogonal_parallel_ratio              tau_core  Divergent       7     -1.660444 Wilcoxon(slope vs 0) 0.015625
+              orthogonal_parallel_ratio              tau_core     Random       7     -2.146780 Wilcoxon(slope vs 0) 0.015625
+              orthogonal_parallel_ratio tau_core_spatial_weak Convergent       7     -2.542311 Wilcoxon(slope vs 0) 0.015625
+              orthogonal_parallel_ratio tau_core_spatial_weak  Divergent       7     -1.869687 Wilcoxon(slope vs 0) 0.015625
+              orthogonal_parallel_ratio tau_core_spatial_weak     Random       7     -2.410986 Wilcoxon(slope vs 0) 0.015625
+              orthogonal_parallel_ratio              tau_only Convergent       7     -5.450190 Wilcoxon(slope vs 0) 0.015625
+              orthogonal_parallel_ratio              tau_only  Divergent       7     -5.306394 Wilcoxon(slope vs 0) 0.031250
+              orthogonal_parallel_ratio              tau_only     Random       7     -2.668473 Wilcoxon(slope vs 0) 0.031250
+              orthogonal_parallel_ratio           tau_spatial Convergent       7     -4.283089 Wilcoxon(slope vs 0) 0.031250
+              orthogonal_parallel_ratio           tau_spatial  Divergent       7     -4.420046 Wilcoxon(slope vs 0) 0.031250
+              orthogonal_parallel_ratio           tau_spatial     Random       7     -1.545813 Wilcoxon(slope vs 0) 0.156250
+              orthogonal_parallel_ratio      tau_spatial_weak Convergent       7     -4.283089 Wilcoxon(slope vs 0) 0.031250
+              orthogonal_parallel_ratio      tau_spatial_weak  Divergent       7     -4.420046 Wilcoxon(slope vs 0) 0.031250
+              orthogonal_parallel_ratio      tau_spatial_weak     Random       7     -1.545813 Wilcoxon(slope vs 0) 0.156250
+              orthogonal_parallel_ratio              tau_weak Convergent       7     -5.450190 Wilcoxon(slope vs 0) 0.015625
+              orthogonal_parallel_ratio              tau_weak  Divergent       7     -5.306394 Wilcoxon(slope vs 0) 0.031250
+              orthogonal_parallel_ratio              tau_weak     Random       7     -2.668473 Wilcoxon(slope vs 0) 0.031250
+                    orthogonal_variance              tau_core Convergent       7     -0.473042 Wilcoxon(slope vs 0) 0.015625
+                    orthogonal_variance              tau_core  Divergent       7     -0.462810 Wilcoxon(slope vs 0) 0.015625
+                    orthogonal_variance              tau_core     Random       7     -0.393254 Wilcoxon(slope vs 0) 0.015625
+                    orthogonal_variance tau_core_spatial_weak Convergent       7     -0.540361 Wilcoxon(slope vs 0) 0.015625
+                    orthogonal_variance tau_core_spatial_weak  Divergent       7     -0.523627 Wilcoxon(slope vs 0) 0.015625
+                    orthogonal_variance tau_core_spatial_weak     Random       7     -0.458892 Wilcoxon(slope vs 0) 0.015625
+                    orthogonal_variance              tau_only Convergent       7     -3.343089 Wilcoxon(slope vs 0) 0.015625
+                    orthogonal_variance              tau_only  Divergent       7     -3.491414 Wilcoxon(slope vs 0) 0.015625
+                    orthogonal_variance              tau_only     Random       7     -2.884108 Wilcoxon(slope vs 0) 0.015625
+                    orthogonal_variance           tau_spatial Convergent       7     -3.745940 Wilcoxon(slope vs 0) 0.015625
+                    orthogonal_variance           tau_spatial  Divergent       7     -3.878095 Wilcoxon(slope vs 0) 0.015625
+                    orthogonal_variance           tau_spatial     Random       7     -3.386670 Wilcoxon(slope vs 0) 0.015625
+                    orthogonal_variance      tau_spatial_weak Convergent       7     -3.745940 Wilcoxon(slope vs 0) 0.015625
+                    orthogonal_variance      tau_spatial_weak  Divergent       7     -3.878095 Wilcoxon(slope vs 0) 0.015625
+                    orthogonal_variance      tau_spatial_weak     Random       7     -3.386670 Wilcoxon(slope vs 0) 0.015625
+                    orthogonal_variance              tau_weak Convergent       7     -3.343089 Wilcoxon(slope vs 0) 0.015625
+                    orthogonal_variance              tau_weak  Divergent       7     -3.491414 Wilcoxon(slope vs 0) 0.015625
+                    orthogonal_variance              tau_weak     Random       7     -2.884108 Wilcoxon(slope vs 0) 0.015625
+                      parallel_variance              tau_core Convergent       7     -0.012490 Wilcoxon(slope vs 0) 0.015625
+                      parallel_variance              tau_core  Divergent       7     -0.016380 Wilcoxon(slope vs 0) 0.015625
+                      parallel_variance              tau_core     Random       7     -0.014400 Wilcoxon(slope vs 0) 0.015625
+                      parallel_variance tau_core_spatial_weak Convergent       7     -0.013630 Wilcoxon(slope vs 0) 0.015625
+                      parallel_variance tau_core_spatial_weak  Divergent       7     -0.016961 Wilcoxon(slope vs 0) 0.015625
+                      parallel_variance tau_core_spatial_weak     Random       7     -0.016249 Wilcoxon(slope vs 0) 0.015625
+                      parallel_variance              tau_only Convergent       7     -0.213583 Wilcoxon(slope vs 0) 0.015625
+                      parallel_variance              tau_only  Divergent       7     -0.214957 Wilcoxon(slope vs 0) 0.015625
+                      parallel_variance              tau_only     Random       7     -0.329529 Wilcoxon(slope vs 0) 0.015625
+                      parallel_variance           tau_spatial Convergent       7     -0.383913 Wilcoxon(slope vs 0) 0.015625
+                      parallel_variance           tau_spatial  Divergent       7     -0.377245 Wilcoxon(slope vs 0) 0.015625
+                      parallel_variance           tau_spatial     Random       7     -0.772219 Wilcoxon(slope vs 0) 0.015625
+                      parallel_variance      tau_spatial_weak Convergent       7     -0.383913 Wilcoxon(slope vs 0) 0.015625
+                      parallel_variance      tau_spatial_weak  Divergent       7     -0.377245 Wilcoxon(slope vs 0) 0.015625
+                      parallel_variance      tau_spatial_weak     Random       7     -0.772219 Wilcoxon(slope vs 0) 0.015625
+                      parallel_variance              tau_weak Convergent       7     -0.213583 Wilcoxon(slope vs 0) 0.015625
+                      parallel_variance              tau_weak  Divergent       7     -0.214957 Wilcoxon(slope vs 0) 0.015625
+                      parallel_variance              tau_weak     Random       7     -0.329529 Wilcoxon(slope vs 0) 0.015625
+              fisher_coherent_vs_random              tau_core        all       7      0.091621 Wilcoxon(slope vs 0) 1.000000
+              fisher_coherent_vs_random tau_core_spatial_weak        all       7      0.092998 Wilcoxon(slope vs 0) 0.812500
+              fisher_coherent_vs_random              tau_only        all       7      0.503737 Wilcoxon(slope vs 0) 0.156250
+              fisher_coherent_vs_random           tau_spatial        all       7      0.730983 Wilcoxon(slope vs 0) 0.078125
+              fisher_coherent_vs_random      tau_spatial_weak        all       7      0.579957 Wilcoxon(slope vs 0) 0.156250
+              fisher_coherent_vs_random              tau_weak        all       7      0.491662 Wilcoxon(slope vs 0) 0.156250
+         fisher_divergent_vs_convergent              tau_core        all       7     -0.055297 Wilcoxon(slope vs 0) 0.156250
+         fisher_divergent_vs_convergent tau_core_spatial_weak        all       7     -0.050998 Wilcoxon(slope vs 0) 0.937500
+         fisher_divergent_vs_convergent              tau_only        all       7     -0.003261 Wilcoxon(slope vs 0) 0.937500
+         fisher_divergent_vs_convergent           tau_spatial        all       7     -0.054290 Wilcoxon(slope vs 0) 0.375000
+         fisher_divergent_vs_convergent      tau_spatial_weak        all       7     -0.034326 Wilcoxon(slope vs 0) 0.375000
+         fisher_divergent_vs_convergent              tau_weak        all       7     -0.036490 Wilcoxon(slope vs 0) 0.375000
+    full_edge_fisher_coherent_vs_random              tau_core        all       4    -42.899828 Wilcoxon(slope vs 0) 0.625000
+    full_edge_fisher_coherent_vs_random tau_core_spatial_weak        all       4    -39.723114 Wilcoxon(slope vs 0) 0.375000
+    full_edge_fisher_coherent_vs_random              tau_only        all       4    -53.635369 Wilcoxon(slope vs 0) 0.375000
+    full_edge_fisher_coherent_vs_random           tau_spatial        all       4    -73.453580 Wilcoxon(slope vs 0) 0.125000
+    full_edge_fisher_coherent_vs_random      tau_spatial_weak        all       4    -53.987190 Wilcoxon(slope vs 0) 0.125000
+    full_edge_fisher_coherent_vs_random              tau_weak        all       4    -59.522484 Wilcoxon(slope vs 0) 0.125000
+     robustness_loss_coherent_vs_random              tau_core        all       4      0.062657 Wilcoxon(slope vs 0) 0.875000
+     robustness_loss_coherent_vs_random tau_core_spatial_weak        all       4     -0.125312 Wilcoxon(slope vs 0) 0.875000
+     robustness_loss_coherent_vs_random              tau_only        all       4      0.045054 Wilcoxon(slope vs 0) 0.625000
+     robustness_loss_coherent_vs_random           tau_spatial        all       4      0.155962 Wilcoxon(slope vs 0) 0.250000
+     robustness_loss_coherent_vs_random      tau_spatial_weak        all       4     -0.019214 Wilcoxon(slope vs 0) 0.875000
+     robustness_loss_coherent_vs_random              tau_weak        all       4     -0.023227 Wilcoxon(slope vs 0) 0.875000
+robustness_loss_divergent_vs_convergent              tau_core        all       4      0.005665 Wilcoxon(slope vs 0) 0.875000
+robustness_loss_divergent_vs_convergent tau_core_spatial_weak        all       4     -0.075169 Wilcoxon(slope vs 0) 0.625000
+robustness_loss_divergent_vs_convergent              tau_only        all       4     -0.036227 Wilcoxon(slope vs 0) 0.250000
+robustness_loss_divergent_vs_convergent           tau_spatial        all       4     -0.073256 Wilcoxon(slope vs 0) 0.250000
+robustness_loss_divergent_vs_convergent      tau_spatial_weak        all       4     -0.042639 Wilcoxon(slope vs 0) 0.250000
+robustness_loss_divergent_vs_convergent              tau_weak        all       4     -0.115729 Wilcoxon(slope vs 0) 0.250000
+    weak_edge_fisher_coherent_vs_random              tau_core        all       4     -0.282818 Wilcoxon(slope vs 0) 0.250000
+    weak_edge_fisher_coherent_vs_random tau_core_spatial_weak        all       4      0.301007 Wilcoxon(slope vs 0) 0.375000
+    weak_edge_fisher_coherent_vs_random              tau_only        all       4     -0.278799 Wilcoxon(slope vs 0) 0.375000
+    weak_edge_fisher_coherent_vs_random           tau_spatial        all       4      0.189138 Wilcoxon(slope vs 0) 0.375000
+    weak_edge_fisher_coherent_vs_random      tau_spatial_weak        all       4     -0.240360 Wilcoxon(slope vs 0) 1.000000
+    weak_edge_fisher_coherent_vs_random              tau_weak        all       4     -0.466531 Wilcoxon(slope vs 0) 0.875000
+```
+
